@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-cd /d "%~dp0"
+pushd "%~dp0"
 
 echo.
 echo  ==========================================
