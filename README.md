@@ -59,25 +59,61 @@ Après le premier lancement réussi :
 Au premier lancement, va dans l'onglet **Config** :
 
 1. **Région MUMU** → Clique "Configurer la région MUMU" et sélectionne la zone de jeu
-2. **Deck actif** → Choisis le deck que tu joues
+2. **Deck actif** → Choisis le deck que tu joues actuellement
 3. **Test de capture** → Vérifie que la capture fonctionne
+4. **Calibration** → Pour chaque état (pré-queue, combat, fin de match), lance le jeu dans cet état et clique "Calibrer"
 
 ---
 
 ## Fonctionnalités
 
+### Dashboard
 | Fonctionnalité | Statut |
 |---|---|
-| Gestion des decks (créer, renommer, supprimer) | ✅ |
-| Configuration région MuMu Player | ✅ |
-| Dashboard : winrate, stats, graphiques | ✅ |
-| Historique des matchs avec filtres | ✅ |
-| Édition et suppression de matchs | ✅ |
-| Panneau détail adversaires / decks | ✅ |
-| Capture automatique des matchs | 🔧 En cours de calibration |
+| 4 KPI cards : winrate global, matchs joués, victoires/défaites, série en cours | ✅ |
+| Filtre par saison (persisté entre sessions) | ✅ |
+| Graphique winrate par deck (barres) | ✅ |
+| Courbe de tendance winrate cumulatif | ✅ |
+| Graphique top 10 adversaires (barres horizontales W/L) | ✅ |
+| Thème clair / sombre | ✅ |
 
-> La capture automatique détecte MuMu Player mais nécessite encore une calibration
-> des états de jeu. En attendant, les matchs peuvent être ajoutés manuellement.
+### Historique
+| Fonctionnalité | Statut |
+|---|---|
+| Table des matchs avec filtres (résultat, deck, adversaire) | ✅ |
+| Recherche textuelle par nom d'adversaire | ✅ |
+| Édition inline (résultat, adversaire, premier joueur) | ✅ |
+| Suppression de match avec confirmation | ✅ |
+| Export CSV (ouvre le fichier automatiquement) | ✅ |
+
+### Saisie & gestion
+| Fonctionnalité | Statut |
+|---|---|
+| Saisie manuelle de match (+ bouton dans la navbar) | ✅ |
+| Gestion des decks : créer, renommer, supprimer (avec confirmation) | ✅ |
+| Panneau détail slide-in : stats adversaires, stats decks | ✅ |
+| Toast notification à chaque match enregistré | ✅ |
+
+### Capture automatique
+| Fonctionnalité | Statut |
+|---|---|
+| Détection MuMu Player | ✅ |
+| Calibration des états de jeu (pré-queue / combat / fin de match) | ✅ |
+| Enregistrement automatique du résultat W/L en fin de match | ✅ (nécessite calibration) |
+| Détection automatique du deck adverse | ❌ Pas encore implémenté |
+
+### Système
+| Fonctionnalité | Statut |
+|---|---|
+| Icône tray (hide on close, double-clic pour rouvrir) | ✅ |
+| Vérification de mise à jour au démarrage (bannière GitHub) | ✅ |
+
+---
+
+## Saisie manuelle de match
+
+Clique sur **+ Match** dans la barre de navigation pour enregistrer un match sans capture automatique.
+Champs disponibles : résultat, deck joué, adversaire, premier à jouer, saison.
 
 ---
 
@@ -89,6 +125,8 @@ Si tu as installé via Git :
 git pull
 launch.bat
 ```
+
+L'application vérifie aussi automatiquement les mises à jour au démarrage et affiche une bannière si une nouvelle version est disponible sur GitHub.
 
 ---
 
