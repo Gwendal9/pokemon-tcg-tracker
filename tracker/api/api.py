@@ -16,6 +16,7 @@ from tracker.db.database import DatabaseManager
 from tracker.db.models import Models
 from tracker.config import ConfigManager
 from tracker.capture.screen import capture_region, capture_region_pil, select_region_interactive
+from tracker.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -302,9 +303,7 @@ class TrackerAPI:
         try:
             matches = self._models.get_matches()
             decks = {d["id"]: d["name"] for d in self._models.get_decks()}
-            data_dir = _os.path.normpath(
-                _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data")
-            )
+            data_dir = get_data_dir()
             _os.makedirs(data_dir, exist_ok=True)
             csv_path = _os.path.join(data_dir, "matches_export.csv")
             with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:

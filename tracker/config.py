@@ -7,10 +7,11 @@ import json
 import logging
 import os
 
+from tracker.paths import get_data_dir
+
 logger = logging.getLogger(__name__)
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_CONFIG_PATH = os.path.normpath(os.path.join(_HERE, "..", "data", "config.json"))
+DEFAULT_CONFIG_PATH = os.path.join(get_data_dir(), "config.json")
 
 CONFIG_DEFAULTS = {
     "mumu_region": None,

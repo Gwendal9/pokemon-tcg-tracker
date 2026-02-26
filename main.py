@@ -25,10 +25,11 @@ from tracker.capture.detector import CombatState, PollingLoop, StateDetector
 from tracker.capture.ocr import OcrPipeline
 from tracker.capture.screen import capture_region_pil
 from tracker.db.database import DatabaseManager
+from tracker.paths import get_data_dir
 from tracker.tray import TrayManager
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-LOG_PATH = os.path.join(_HERE, "data", "app.log")
+LOG_PATH = os.path.join(get_data_dir(), "app.log")
 
 logger = logging.getLogger(__name__)
 

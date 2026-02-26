@@ -12,11 +12,11 @@ from enum import Enum
 from PIL import Image
 
 from tracker.capture.screen import capture_region_pil, find_mumu_window
+from tracker.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_CAL_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "data", "calibration"))
+_CAL_DIR = os.path.join(get_data_dir(), "calibration")
 _REF_PATHS = {
     "pre_queue":  os.path.join(_CAL_DIR, "pre_queue.png"),
     "in_combat":  os.path.join(_CAL_DIR, "in_combat.png"),

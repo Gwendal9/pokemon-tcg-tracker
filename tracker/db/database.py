@@ -7,10 +7,11 @@ import logging
 import os
 import sqlite3
 
+from tracker.paths import get_data_dir
+
 logger = logging.getLogger(__name__)
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.normpath(os.path.join(_HERE, "..", "..", "data", "tracker.db"))
+DB_PATH = os.path.join(get_data_dir(), "tracker.db")
 
 SCHEMA_VERSION = 1
 

@@ -8,8 +8,9 @@ echo   Pokemon TCG Tracker
 echo  ==========================================
 echo.
 
-:: --- Le venv est toujours sur un chemin local Windows (pas reseau) ---
+:: --- Chemins locaux Windows (pas reseau/WSL) ---
 set VENV_DIR=%LOCALAPPDATA%\pokemon-tcg-tracker\.venv
+set PTCG_DATA_DIR=%LOCALAPPDATA%\pokemon-tcg-tracker\data
 
 :: --- Verifier que Python est installe ---
 python --version >nul 2>&1
