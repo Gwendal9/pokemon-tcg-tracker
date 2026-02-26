@@ -47,8 +47,8 @@ body {
    ------------------------------------------------------------ */
 .kpi-row {
     display:               grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap:                   1.5rem;
+    grid-template-columns: repeat(4, 1fr);
+    gap:                   1rem;
     margin-bottom:         1.5rem;
 }
 
@@ -138,6 +138,30 @@ body {
 }
 #decks-list .btn-edit:hover   { background: var(--color-base-300); }
 #decks-list .btn-delete:hover { background: var(--color-loss); color: white; }
+
+#decks-list .btn-delete-confirm {
+    padding:       0.2rem 0.6rem;
+    border-radius: 0.375rem;
+    border:        1px solid var(--color-loss);
+    background:    var(--color-loss);
+    color:         white;
+    cursor:        pointer;
+    font-size:     0.8rem;
+}
+#decks-list .btn-delete-cancel {
+    padding:       0.2rem 0.6rem;
+    border-radius: 0.375rem;
+    border:        1px solid var(--color-base-300);
+    background:    transparent;
+    color:         var(--color-base-content);
+    cursor:        pointer;
+    font-size:     0.8rem;
+}
+#decks-list .btn-delete-cancel:hover { background: var(--color-base-300); }
+#decks-list .deck-delete-msg {
+    font-size: 0.8rem;
+    opacity:   0.75;
+}
 
 .decks-empty {
     opacity:    0.5;

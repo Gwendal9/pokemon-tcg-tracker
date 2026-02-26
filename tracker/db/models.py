@@ -218,12 +218,59 @@ class Models:
 
             deck_stats.sort(key=lambda x: x["wins"], reverse=True)
 
+            # Série en cours (max 50 derniers matchs W/L)
+            recent_rows = conn.execute(
+                """SELECT result FROM matches
+                   WHERE (? IS NULL OR season = ?) AND result IN ('W', 'L')
+                   ORDER BY captured_at DESC LIMIT 50""",
+                season_params,
+            ).fetchall()
+            current_streak_type = None
+            current_streak_count = 0
+            if recent_rows:
+                current_streak_type = recent_rows[0]["result"]
+                for row in recent_rows:
+                    if row["result"] == current_streak_type:
+                        current_streak_count += 1
+                    else:
+                        break
+
+            # Meilleure série de victoires
+            all_rows = conn.execute(
+                """SELECT result FROM matches
+                   WHERE (? IS NULL OR season = ?) AND result IN ('W', 'L')
+                   ORDER BY captured_at ASC""",
+                season_params,
+            ).fetchall()
+            best_streak = 0
+            run = 0
+            for row in all_rows:
+                if row["result"] == "W":
+                    run += 1
+                    if run > best_streak:
+                        best_streak = run
+                else:
+                    run = 0
+
+            # Deck le plus joué
+            top_row = conn.execute(
+                """SELECT d.name, COUNT(*) AS total
+                   FROM matches m JOIN decks d ON m.deck_id = d.id
+                   WHERE (? IS NULL OR m.season = ?)
+                   GROUP BY m.deck_id ORDER BY total DESC LIMIT 1""",
+                season_params,
+            ).fetchone()
+            top_deck = {"name": top_row["name"], "total": top_row["total"]} if top_row else None
+
             return {
                 "total_matches": total,
                 "wins": wins,
                 "losses": losses,
                 "winrate": winrate,
                 "deck_stats": deck_stats,
+                "current_streak": {"type": current_streak_type, "count": current_streak_count},
+                "best_win_streak": best_streak,
+                "top_deck": top_deck,
             }
         finally:
             conn.close()

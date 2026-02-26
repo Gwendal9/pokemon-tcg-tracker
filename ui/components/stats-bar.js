@@ -28,15 +28,33 @@ var statsBar = {
         var container = document.querySelector('.kpi-row');
         if (!container) return;
 
-        var total = stats.total_matches || 0;
-        var wins = stats.wins || 0;
-        var losses = stats.losses || 0;
+        var total   = stats.total_matches || 0;
+        var wins    = stats.wins || 0;
+        var losses  = stats.losses || 0;
         var winrate = stats.winrate || 0;
 
         var winrateDisplay = total === 0 ? '--' : winrate.toFixed(1) + '%';
         var winColor = total === 0
             ? 'var(--color-base-content)'
             : (winrate >= 50 ? 'var(--color-win)' : 'var(--color-loss)');
+
+        // Série en cours
+        var streak     = (stats.current_streak) || { type: null, count: 0 };
+        var bestStreak = stats.best_win_streak || 0;
+        var topDeck    = stats.top_deck;
+
+        var streakVal = streak.count > 0
+            ? streak.count + (streak.type || '')
+            : '--';
+        var streakColor = streak.count === 0
+            ? 'var(--color-base-content)'
+            : (streak.type === 'W' ? 'var(--color-win)' : 'var(--color-loss)');
+        var streakDesc = bestStreak > 0
+            ? 'record : ' + bestStreak + 'V'
+            : 'aucun résultat connu';
+        if (topDeck && topDeck.name) {
+            streakDesc += ' · ' + topDeck.name + ' (' + topDeck.total + ')';
+        }
 
         container.innerHTML =
             statsBar._card(
@@ -59,6 +77,13 @@ var statsBar = {
                 wins + ' / ' + losses,
                 'var(--color-base-content)',
                 'résultats connus uniquement'
+            ) +
+            statsBar._card(
+                'streak',
+                'Série en cours',
+                streakVal,
+                streakColor,
+                streakDesc
             );
     },
 

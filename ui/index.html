@@ -40,7 +40,8 @@
         <section id="tab-dashboard">
             <div class="flex justify-between items-center mt-4 mb-2">
                 <h2 class="text-xl font-semibold">Dashboard</h2>
-                <select id="season-filter" class="select select-sm select-bordered min-w-[180px]">
+                <select id="season-filter" data-season-filter="1"
+                        class="select select-sm select-bordered min-w-[180px]">
                     <option value="">Toutes les saisons</option>
                 </select>
             </div>
@@ -53,10 +54,16 @@
         <section id="tab-history" class="hidden mt-4">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Historique</h2>
-                <button class="btn btn-sm btn-outline"
-                        onclick="window.dispatchEvent(new CustomEvent('export-csv-requested'))">
-                    Exporter CSV
-                </button>
+                <div class="flex gap-2 items-center">
+                    <select data-season-filter="1"
+                            class="select select-sm select-bordered min-w-[160px]">
+                        <option value="">Toutes les saisons</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline"
+                            onclick="window.dispatchEvent(new CustomEvent('export-csv-requested'))">
+                        Exporter CSV
+                    </button>
+                </div>
             </div>
             <p id="export-error" class="text-error text-sm mb-2" style="display:none;"></p>
             <!-- match-table.js -->

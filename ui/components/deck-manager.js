@@ -101,7 +101,24 @@ class DeckManager {
     }
 
     _handleDelete(deckId) {
-        window.dispatchEvent(new CustomEvent('deck-delete-requested', { detail: { deck_id: deckId } }));
+        const item = this._container.querySelector(`.deck-item[data-id="${deckId}"]`);
+        if (!item) return;
+        const nameSpan = item.querySelector('.deck-name');
+        const deckName = nameSpan ? nameSpan.textContent : '';
+        const actions = item.querySelector('.deck-actions');
+        if (!actions) return;
+
+        actions.innerHTML = `
+            <span class="deck-delete-msg">Supprimer « ${this._escapeHtml(deckName)} » ?</span>
+            <button class="btn-delete-confirm">Oui</button>
+            <button class="btn-delete-cancel">Non</button>
+        `;
+        actions.querySelector('.btn-delete-confirm').addEventListener('click', () => {
+            window.dispatchEvent(new CustomEvent('deck-delete-requested', { detail: { deck_id: deckId } }));
+        });
+        actions.querySelector('.btn-delete-cancel').addEventListener('click', () => {
+            this._loadDecks();
+        });
     }
 
     render(decks) {

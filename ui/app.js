@@ -49,18 +49,20 @@ window.addEventListener('pywebviewready', function () {
         chartTrend.init();
     }
 
-    // Filtre saison (restaure la valeur sauvegardée, puis charge la liste)
-    var seasonFilter = document.getElementById('season-filter');
-    if (seasonFilter) {
-        seasonFilter.addEventListener('change', function () {
-            window._ptcgSeason = seasonFilter.value || null;
-            window.dispatchEvent(new CustomEvent('active-season-save-requested', {
-                detail: { season: window._ptcgSeason }
-            }));
-            window.dispatchEvent(new CustomEvent('stats-load-requested'));
-            window.dispatchEvent(new CustomEvent('matches-load-requested'));
+    // Filtre saison — tous les selects [data-season-filter] sont synchronisés
+    var _seasonSelects = document.querySelectorAll('[data-season-filter]');
+    if (_seasonSelects.length > 0) {
+        _seasonSelects.forEach(function (sel) {
+            sel.addEventListener('change', function () {
+                window._ptcgSeason = sel.value || null;
+                _seasonSelects.forEach(function (s) { s.value = sel.value; });
+                window.dispatchEvent(new CustomEvent('active-season-save-requested', {
+                    detail: { season: window._ptcgSeason }
+                }));
+                window.dispatchEvent(new CustomEvent('stats-load-requested'));
+                window.dispatchEvent(new CustomEvent('matches-load-requested'));
+            });
         });
-        // active-season-load-requested : lit la config, restaure _ptcgSeason, puis charge les saisons
         window.dispatchEvent(new CustomEvent('active-season-load-requested'));
     }
 
@@ -387,16 +389,15 @@ window.addEventListener('seasons-load-requested', async function () {
 });
 
 window.addEventListener('seasons-loaded', function (e) {
-    var sel = document.getElementById('season-filter');
-    if (!sel) return;
-    // Priorité : valeur actuelle du select, puis saison sauvegardée globalement
-    var current = sel.value || window._ptcgSeason || '';
+    var current = window._ptcgSeason || '';
     var html = '<option value="">Toutes les saisons</option>';
     (e.detail.seasons || []).forEach(function (s) {
         html += '<option value="' + s + '"' + (current === s ? ' selected' : '') + '>' + s + '</option>';
     });
-    sel.innerHTML = html;
-    if (current) sel.value = current;
+    document.querySelectorAll('[data-season-filter]').forEach(function (sel) {
+        sel.innerHTML = html;
+        if (current) sel.value = current;
+    });
 });
 
 window.addEventListener('match-created', function (e) {
