@@ -45,6 +45,9 @@ window.addEventListener('pywebviewready', function () {
     if (typeof matchForm !== 'undefined') {
         matchForm.init();
     }
+    if (typeof chartTrend !== 'undefined') {
+        chartTrend.init();
+    }
 
     // Filtre saison (restaure la valeur sauvegardée, puis charge la liste)
     var seasonFilter = document.getElementById('season-filter');
@@ -60,6 +63,11 @@ window.addEventListener('pywebviewready', function () {
         // active-season-load-requested : lit la config, restaure _ptcgSeason, puis charge les saisons
         window.dispatchEvent(new CustomEvent('active-season-load-requested'));
     }
+
+    // Désactiver les boutons région-dépendants par défaut (activés par config-loaded)
+    var _captureBtn = document.getElementById('capture-test-btn');
+    if (_captureBtn) _captureBtn.disabled = true;
+    document.querySelectorAll('.btn-calibrate').forEach(function (b) { b.disabled = true; });
 
     // Statut calibration
     window.dispatchEvent(new CustomEvent('calibration-status-requested'));
@@ -341,6 +349,19 @@ window.addEventListener('match-update-field-requested', async function (e) {
 // ---------------------------------------------------------------------------
 // Seasons bridge (Item 2)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Validation config — activer/désactiver les boutons selon la région (Item 3)
+// ---------------------------------------------------------------------------
+
+window.addEventListener('config-loaded', function (e) {
+    var hasRegion = !!(e.detail && e.detail.config && e.detail.config.mumu_region);
+    var captureBtn = document.getElementById('capture-test-btn');
+    if (captureBtn) captureBtn.disabled = !hasRegion;
+    document.querySelectorAll('.btn-calibrate').forEach(function (b) { b.disabled = !hasRegion; });
+    var hint = document.getElementById('region-required-hint');
+    if (hint) hint.style.display = hasRegion ? 'none' : '';
+});
 
 // ---------------------------------------------------------------------------
 // Toast notifications

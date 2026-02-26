@@ -105,6 +105,13 @@
                 <p id="active-deck-confirm" class="text-success text-sm mt-2" style="display:none;"></p>
             </div>
 
+            <!-- Avertissement région non configurée -->
+            <p id="region-required-hint"
+               class="text-sm mb-3 p-3 rounded-box border border-base-300 opacity-70"
+               style="display:none;">
+                Configurez la région MUMU ci-dessus pour activer la capture et la calibration.
+            </p>
+
             <!-- Test capture -->
             <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
                 <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">
@@ -133,7 +140,7 @@
                         <div class="flex items-center gap-3">
                             <span id="cal-status-pre_queue" class="text-xs"></span>
                             <button class="btn btn-sm btn-outline"
-                                    onclick="app_calibrate('pre_queue')">Calibrer</button>
+                                    onclick="app_calibrate('pre_queue')" class="btn btn-sm btn-outline btn-calibrate">Calibrer</button>
                         </div>
                     </div>
                     <div class="flex items-center justify-between">
@@ -141,7 +148,7 @@
                         <div class="flex items-center gap-3">
                             <span id="cal-status-in_combat" class="text-xs"></span>
                             <button class="btn btn-sm btn-outline"
-                                    onclick="app_calibrate('in_combat')">Calibrer</button>
+                                    onclick="app_calibrate('in_combat')" class="btn btn-sm btn-outline btn-calibrate">Calibrer</button>
                         </div>
                     </div>
                     <div class="flex items-center justify-between">
@@ -149,7 +156,7 @@
                         <div class="flex items-center gap-3">
                             <span id="cal-status-end_screen" class="text-xs"></span>
                             <button class="btn btn-sm btn-outline"
-                                    onclick="app_calibrate('end_screen')">Calibrer</button>
+                                    onclick="app_calibrate('end_screen')" class="btn btn-sm btn-outline btn-calibrate">Calibrer</button>
                         </div>
                     </div>
                 </div>
@@ -231,6 +238,7 @@
     <script src="components/active-deck-selector.js"></script>
     <script src="components/stats-bar.js"></script>
     <script src="components/chart-winrate.js"></script>
+    <script src="components/chart-trend.js"></script>
     <script src="components/match-table.js"></script>
     <script src="components/detail-panel.js"></script>
     <script src="components/match-form.js"></script>

@@ -1,8 +1,9 @@
 // ui/components/detail-panel.js — Fréquence adversaires + panneau détail (Story 4.6)
 var detailPanel = {
-    _stats:    null,  // dernières stats reçues via stats-loaded
-    _matches:  [],    // derniers matchs reçus via matches-loaded
-    _activeTab: 'opponents',  // 'opponents' | 'decks'
+    _stats:         null,         // dernières stats reçues via stats-loaded
+    _matches:       [],           // derniers matchs reçus via matches-loaded
+    _activeTab:     'opponents',  // 'opponents' | 'decks'
+    _opponentSort:  'total',      // 'total' | 'winrate'
 
     init: function () {
         // Mise en cache des données au fil des events existants (aucun appel API en plus)
@@ -99,14 +100,37 @@ var detailPanel = {
             return '<p class="text-sm opacity-50 text-center py-8">Aucun adversaire enregistré</p>';
         }
 
-        var style    = getComputedStyle(document.documentElement);
+        // Tri
+        var sort = detailPanel._opponentSort;
+        if (sort === 'winrate') {
+            opps = opps.slice().sort(function (a, b) {
+                var aKnown = a.wins + a.losses;
+                var bKnown = b.wins + b.losses;
+                var aWr = aKnown > 0 ? a.wins / aKnown : -1;
+                var bWr = bKnown > 0 ? b.wins / bKnown : -1;
+                return bWr - aWr;
+            });
+        }
+
+        var style     = getComputedStyle(document.documentElement);
         var colorWin  = style.getPropertyValue('--color-win').trim();
         var colorLoss = style.getPropertyValue('--color-loss').trim();
 
+        var sortHTML =
+            '<div class="flex gap-1 mb-2 items-center">' +
+            '<span class="text-xs opacity-50 mr-1">Tri :</span>' +
+            '<button class="btn btn-xs ' + (sort === 'total'   ? 'btn-neutral' : 'btn-ghost') + '"' +
+            ' onclick="detailPanel._switchOpponentSort(\'total\')">Fréquence</button>' +
+            '<button class="btn btn-xs ' + (sort === 'winrate' ? 'btn-neutral' : 'btn-ghost') + '"' +
+            ' onclick="detailPanel._switchOpponentSort(\'winrate\')">Winrate</button>' +
+            '</div>';
+
         var html =
+            sortHTML +
             '<table class="table table-xs w-full">' +
             '<thead><tr>' +
             '<th>Adversaire</th>' +
+            '<th class="text-right">Total</th>' +
             '<th class="text-right">V</th>' +
             '<th class="text-right">D</th>' +
             '<th class="text-right">Winrate</th>' +
@@ -122,6 +146,7 @@ var detailPanel = {
             html +=
                 '<tr>' +
                 '<td class="text-sm">' + detailPanel._esc(o.name) + '</td>' +
+                '<td class="text-right text-sm">' + o.total + '</td>' +
                 '<td class="text-right text-sm">' + o.wins + '</td>' +
                 '<td class="text-right text-sm">' + o.losses + '</td>' +
                 '<td class="text-right text-sm font-bold" style="color:' + wrColor + '">' +
@@ -131,6 +156,11 @@ var detailPanel = {
 
         html += '</tbody></table>';
         return html;
+    },
+
+    _switchOpponentSort: function (sort) {
+        detailPanel._opponentSort = sort;
+        detailPanel._renderContent();
     },
 
     _computeOpponents: function () {
