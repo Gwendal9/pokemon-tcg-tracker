@@ -268,6 +268,19 @@ window.addEventListener('matches-load-requested', async function () {
     }
 });
 
+window.addEventListener('match-delete-requested', async function (e) {
+    try {
+        const result = await window.pywebview.api.delete_match(e.detail.match_id);
+        if (result && result.error) {
+            window.dispatchEvent(new CustomEvent('match-error', { detail: { message: result.error } }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('match-deleted', { detail: { match_id: e.detail.match_id } }));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('match-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
 window.addEventListener('match-update-field-requested', async function (e) {
     try {
         const result = await window.pywebview.api.update_match_field(

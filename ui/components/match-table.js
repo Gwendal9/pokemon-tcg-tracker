@@ -27,6 +27,9 @@ var matchTable = {
         window.addEventListener('match-updated', function () {
             window.dispatchEvent(new CustomEvent('matches-load-requested'));
         });
+        window.addEventListener('match-deleted', function () {
+            window.dispatchEvent(new CustomEvent('matches-load-requested'));
+        });
         window.addEventListener('deck-created', function () {
             window.dispatchEvent(new CustomEvent('matches-load-requested'));
         });
@@ -153,9 +156,11 @@ var matchTable = {
             '<td class="text-sm">' + matchTable._esc(deckName) + '</td>' +
             '<td class="text-sm">' + matchTable._esc(m.opponent || '?') + '</td>' +
             '<td class="text-sm">' + matchTable._esc(m.first_player || '?') + '</td>' +
-            '<td>' +
+            '<td class="flex gap-1">' +
             '<button class="btn btn-ghost btn-xs" ' +
             'onclick="matchTable._startEdit(this)" title="Modifier">✎</button>' +
+            '<button class="btn btn-ghost btn-xs text-error" ' +
+            'onclick="matchTable._startDelete(this)" title="Supprimer">✕</button>' +
             '</td>' +
             '</tr>';
     },
@@ -226,6 +231,37 @@ var matchTable = {
             }));
         });
         // match-updated (émis par app.js) déclenchera matches-load-requested → re-render
+    },
+
+    // -------------------------------------------------------------------------
+    // Suppression inline
+    // -------------------------------------------------------------------------
+
+    _startDelete: function (btn) {
+        var tr = btn.closest('tr[data-match-id]');
+        if (!tr) return;
+        var matchId = tr.getAttribute('data-match-id');
+        var confirmHTML =
+            '<tr data-match-id="' + matchId + '" data-confirming-delete="1">' +
+            '<td colspan="5" class="text-sm opacity-70">Supprimer ce match ?</td>' +
+            '<td class="flex gap-1">' +
+            '<button class="btn btn-error btn-xs" ' +
+            'onclick="matchTable._confirmDelete(this)">Oui</button>' +
+            '<button class="btn btn-ghost btn-xs" ' +
+            'onclick="matchTable._render()">Non</button>' +
+            '</td>' +
+            '</tr>';
+        var rows = Array.from(document.querySelectorAll('tr[data-match-id="' + matchId + '"]'));
+        rows.forEach(function (row) { row.outerHTML = confirmHTML; });
+    },
+
+    _confirmDelete: function (btn) {
+        var tr = btn.closest('tr[data-match-id]');
+        if (!tr) return;
+        var matchId = parseInt(tr.getAttribute('data-match-id'));
+        window.dispatchEvent(new CustomEvent('match-delete-requested', {
+            detail: { match_id: matchId }
+        }));
     },
 
     // -------------------------------------------------------------------------

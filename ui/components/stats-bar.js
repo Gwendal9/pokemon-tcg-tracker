@@ -16,6 +16,9 @@ var statsBar = {
         window.addEventListener('match-updated', function () {
             window.dispatchEvent(new CustomEvent('stats-load-requested'));
         });
+        window.addEventListener('match-deleted', function () {
+            window.dispatchEvent(new CustomEvent('stats-load-requested'));
+        });
 
         // Déclencher le chargement initial via le bridge app.js
         window.dispatchEvent(new CustomEvent('stats-load-requested'));

@@ -124,6 +124,16 @@ class Models:
         finally:
             conn.close()
 
+    def delete_match(self, match_id: int) -> bool:
+        """Supprime un match. Retourne True si supprimé, False si introuvable."""
+        conn = self._connect()
+        try:
+            cursor = conn.execute("DELETE FROM matches WHERE id = ?", (match_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
     def update_match_field(self, match_id: int, field: str, value: str) -> bool:
         if field not in ALLOWED_MATCH_FIELDS:
             logger.warning("update_match_field: champ non autorisé '%s'", field)

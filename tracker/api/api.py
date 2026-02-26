@@ -146,6 +146,15 @@ class TrackerAPI:
     # Matches (Story 3.4)
     # -------------------------------------------------------------------------
 
+    async def delete_match(self, match_id: int) -> bool:
+        """Supprime un match. Retourne True si succès, False si inexistant."""
+        try:
+            with self._db_lock:
+                return self._models.delete_match(match_id)
+        except Exception as e:
+            logger.error("delete_match: %s", e)
+            return {"error": str(e)}
+
     async def save_match(self, match_data: dict) -> dict:
         """Enregistre un match capturé en DB. Protégé par _db_lock.
 
