@@ -282,6 +282,16 @@ class TrackerAPI:
     # Export CSV
     # -------------------------------------------------------------------------
 
+    async def open_external_url(self, url: str) -> dict:
+        """Ouvre une URL dans le navigateur par défaut."""
+        import webbrowser
+        try:
+            webbrowser.open(url)
+            return {"ok": True}
+        except Exception as e:
+            logger.error("open_external_url: %s", e)
+            return {"error": str(e)}
+
     async def export_matches_csv(self) -> dict:
         """Exporte tous les matchs en CSV dans data/matches_export.csv et l'ouvre.
 

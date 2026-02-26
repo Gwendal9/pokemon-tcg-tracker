@@ -234,6 +234,18 @@
         <form method="dialog" class="modal-backdrop"><button>Fermer</button></form>
     </dialog>
 
+    <!-- Bannière mise à jour disponible -->
+    <div id="update-banner" style="display:none;"
+         class="fixed top-12 left-0 right-0 z-40 bg-base-300 border-b border-base-300 px-4 py-2 flex items-center gap-3 text-sm">
+        <span id="update-banner-text"></span>
+        <button class="btn btn-xs btn-primary"
+                onclick="window.dispatchEvent(new CustomEvent('open-url-requested'))">
+            Télécharger
+        </button>
+        <button class="btn btn-xs btn-ghost ml-auto"
+                onclick="document.getElementById('update-banner').style.display='none'">✕</button>
+    </div>
+
     <!-- Toast notifications -->
     <div id="toast-container"
          class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 min-w-[220px]"></div>
@@ -246,6 +258,7 @@
     <script src="components/stats-bar.js"></script>
     <script src="components/chart-winrate.js"></script>
     <script src="components/chart-trend.js"></script>
+    <script src="components/chart-opponents.js"></script>
     <script src="components/match-table.js"></script>
     <script src="components/detail-panel.js"></script>
     <script src="components/match-form.js"></script>

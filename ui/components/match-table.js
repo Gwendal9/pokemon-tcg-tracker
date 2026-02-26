@@ -4,6 +4,7 @@ var matchTable = {
     _matches:  [],   // liste brute (non filtrée)
     _filterResult: 'all',  // 'all' | 'W' | 'L' | 'D' | '?'
     _filterDeck:   '',     // '' ou String(deck_id)
+    _filterSearch: '',     // '' ou texte recherché (adversaire)
 
     init: function () {
         // Données chargées par le bridge app.js (matches + decks en parallèle)
@@ -75,6 +76,8 @@ var matchTable = {
             '<select data-mt-filter-deck class="select select-sm select-bordered">' +
             '<option value="">Tous les decks</option>' +
             '</select>' +
+            '<input data-mt-filter-search type="search" placeholder="Chercher adversaire…"' +
+            ' class="input input-sm input-bordered w-44">' +
             '</div>' +
             '<div class="overflow-x-auto">' +
             '<table class="table table-sm w-full">' +
@@ -109,6 +112,15 @@ var matchTable = {
                 matchTable._render();
             });
         });
+        document.querySelectorAll('[data-mt-filter-search]').forEach(function (inp) {
+            inp.addEventListener('input', function () {
+                matchTable._filterSearch = inp.value.trim().toLowerCase();
+                document.querySelectorAll('[data-mt-filter-search]').forEach(function (i) {
+                    i.value = inp.value;
+                });
+                matchTable._render();
+            });
+        });
     },
 
     // -------------------------------------------------------------------------
@@ -118,9 +130,11 @@ var matchTable = {
     _render: function () {
         matchTable._updateDeckFilters();
 
+        var _search = matchTable._filterSearch;
         var filtered = matchTable._matches.filter(function (m) {
             if (matchTable._filterResult !== 'all' && m.result !== matchTable._filterResult) return false;
             if (matchTable._filterDeck !== '' && String(m.deck_id) !== matchTable._filterDeck) return false;
+            if (_search && !(m.opponent || '').toLowerCase().includes(_search)) return false;
             return true;
         });
 

@@ -48,6 +48,9 @@ window.addEventListener('pywebviewready', function () {
     if (typeof chartTrend !== 'undefined') {
         chartTrend.init();
     }
+    if (typeof chartOpponents !== 'undefined') {
+        chartOpponents.init();
+    }
 
     // Filtre saison — tous les selects [data-season-filter] sont synchronisés
     var _seasonSelects = document.querySelectorAll('[data-season-filter]');
@@ -488,5 +491,27 @@ window.addEventListener('active-season-save-requested', async function (e) {
             config.active_season = e.detail.season;
             await window.pywebview.api.save_config(config);
         }
+    } catch (err) {}
+});
+
+// ---------------------------------------------------------------------------
+// Mise à jour automatique (Item 3)
+// ---------------------------------------------------------------------------
+
+window._updateUrl = null;
+
+window.addEventListener('update-available', function (e) {
+    window._updateUrl = e.detail && e.detail.url;
+    var banner = document.getElementById('update-banner');
+    var text   = document.getElementById('update-banner-text');
+    if (!banner) return;
+    if (text) text.textContent = 'Nouvelle version disponible : ' + (e.detail && e.detail.version || '');
+    banner.style.display = '';
+});
+
+window.addEventListener('open-url-requested', async function () {
+    if (!window._updateUrl) return;
+    try {
+        await window.pywebview.api.open_external_url(window._updateUrl);
     } catch (err) {}
 });

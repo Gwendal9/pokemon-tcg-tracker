@@ -153,6 +153,28 @@ def main() -> None:
     polling_thread = threading.Thread(target=polling.start, name="polling", daemon=True)
     polling_thread.start()
 
+    # Background update check (Story 5.1)
+    def _check_update():
+        import time as _time
+        _time.sleep(8)  # attendre que l'UI soit chargée
+        from tracker.version import __version__
+        from tracker import updater
+        result = updater.check_for_update(__version__)
+        if result:
+            version = str(result["version"]).replace("'", "").replace('"', '')
+            url     = str(result["url"]).replace("'", "").replace('"', '')
+            js = (
+                "window.dispatchEvent(new CustomEvent('update-available',"
+                "{{detail:{{version:'{v}',url:'{u}'}}}}))".format(v=version, u=url)
+            )
+            try:
+                window.evaluate_js(js)
+            except Exception:
+                pass
+
+    update_thread = threading.Thread(target=_check_update, name="updater", daemon=True)
+    update_thread.start()
+
     # Boucle GUI pywebview (bloquant jusqu'à window.destroy())
     webview.start()
     logger.info("Application fermée proprement")
