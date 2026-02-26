@@ -1,0 +1,22 @@
+# Runtime data — jamais commité
+data/
+
+# Environnement Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build
+dist/
+*.spec.bak
+
+# Tests
+.pytest_cache/
+.coverage
+
+# IDE
+.idea/
+.vscode/
+*.egg-info/

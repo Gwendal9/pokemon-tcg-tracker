@@ -1,0 +1,6 @@
+pywebview==6.1
+easyocr==1.7.2
+mss==10.1.0
+pywin32==311
+pystray==0.19.5
+Pillow==12.1.1

@@ -1,0 +1,86 @@
+/* ============================================================
+   styles.css — Thèmes DaisyUI custom + Layout Pokemon TCG Tracker
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   Thème clair (ptcg-light)
+   ------------------------------------------------------------ */
+[data-theme="ptcg-light"] {
+    --color-win:          #16a34a;  /* green-600 */
+    --color-loss:         #dc2626;  /* red-600   */
+    --color-unknown:      #d97706;  /* amber-600 */
+    --color-accent:       #4f46e5;  /* indigo-600 */
+    --color-base-100:     #ffffff;
+    --color-base-200:     #f8fafc;  /* slate-50  */
+    --color-base-300:     #e2e8f0;  /* slate-200 */
+    --color-base-content: #0f172a;  /* slate-900 */
+    --color-neutral:      #64748b;  /* slate-500 */
+}
+
+/* ------------------------------------------------------------
+   Thème sombre (ptcg-dark)
+   ------------------------------------------------------------ */
+[data-theme="ptcg-dark"] {
+    --color-win:          #22c55e;  /* green-500 */
+    --color-loss:         #ef4444;  /* red-500   */
+    --color-unknown:      #f59e0b;  /* amber-500 */
+    --color-accent:       #6366f1;  /* indigo-500 */
+    --color-base-100:     #1a1a2e;  /* navy profond */
+    --color-base-200:     #16213e;
+    --color-base-300:     #0f3460;
+    --color-base-content: #e2e8f0;  /* slate-200 */
+    --color-neutral:      #94a3b8;  /* slate-400 */
+}
+
+/* ------------------------------------------------------------
+   Base
+   ------------------------------------------------------------ */
+body {
+    min-width:  900px;
+    min-height: 600px;
+    background-color: var(--color-base-100);
+    color:            var(--color-base-content);
+}
+
+/* ------------------------------------------------------------
+   Layout Dashboard — trois bandes
+   ------------------------------------------------------------ */
+.kpi-row {
+    display:               grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap:                   1.5rem;
+    margin-bottom:         1.5rem;
+}
+
+.charts-row {
+    display:               grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap:                   1.5rem;
+    margin-bottom:         1.5rem;
+}
+
+.table-section {
+    max-height: calc(100vh - 380px);
+    overflow-y: auto;
+}
+
+/* ------------------------------------------------------------
+   Detail Panel (Story 4.6 — slide-in depuis droite)
+   ------------------------------------------------------------ */
+.detail-panel {
+    position:         fixed;
+    right:            0;
+    top:              52px;
+    width:            440px;
+    height:           calc(100vh - 52px);
+    transform:        translateX(100%);
+    transition:       transform 200ms ease-in-out;
+    background-color: var(--color-base-200);
+    border-left:      1px solid var(--color-base-300);
+    z-index:          20;
+    overflow-y:       auto;
+}
+
+.detail-panel--open {
+    transform: translateX(0);
+}
