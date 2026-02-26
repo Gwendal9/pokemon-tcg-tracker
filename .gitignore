@@ -1,6 +1,9 @@
 # Runtime data — jamais commité
 data/
 
+# Dépendances JS vendorisées (téléchargées par launch.bat)
+ui/vendor/
+
 # Environnement Python
 .venv/
 __pycache__/

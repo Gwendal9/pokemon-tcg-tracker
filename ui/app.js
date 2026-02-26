@@ -39,6 +39,9 @@ window.addEventListener('pywebviewready', function () {
     if (typeof detailPanel !== 'undefined') {
         detailPanel.init();
     }
+    if (typeof matchForm !== 'undefined') {
+        matchForm.init();
+    }
 });
 
 // ---------------------------------------------------------------------------
@@ -244,6 +247,23 @@ function showError(msg) {
 
 window.addEventListener('deck-error', function (e) {
     showError(e.detail.message);
+});
+
+// ---------------------------------------------------------------------------
+// Match save bridge (saisie manuelle — match-form.js)
+// ---------------------------------------------------------------------------
+
+window.addEventListener('match-save-requested', async function (e) {
+    try {
+        const result = await window.pywebview.api.save_match(e.detail);
+        if (result && result.error) {
+            window.dispatchEvent(new CustomEvent('match-error', { detail: { message: result.error } }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('match-created', { detail: result }));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('match-error', { detail: { message: 'Erreur inattendue' } }));
+    }
 });
 
 // ---------------------------------------------------------------------------

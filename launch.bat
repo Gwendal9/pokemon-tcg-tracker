@@ -24,7 +24,7 @@ if errorlevel 1 (
 
 :: --- Creer le venv si absent ---
 if not exist ".venv\Scripts\python.exe" (
-    echo  [1/2] Creation de l'environnement virtuel...
+    echo  [1/3] Creation de l'environnement virtuel...
     python -m venv .venv
     if errorlevel 1 (
         echo  ERREUR : creation du venv echouee.
@@ -35,13 +35,10 @@ if not exist ".venv\Scripts\python.exe" (
     echo.
 )
 
-:: --- Installer les dependances si pywebview absent ---
+:: --- Installer les dependances Python si pywebview absent ---
 if not exist ".venv\Lib\site-packages\webview" (
-    echo  [2/2] Installation des dependances...
+    echo  [2/3] Installation des dependances Python...
     echo  ^(premiere fois : peut prendre 2 a 5 minutes^)
-    echo.
-    echo  NOTE : EasyOCR telechargera ~500 Mo de modeles
-    echo  au premier lancement de la capture.
     echo.
     .venv\Scripts\pip install -r requirements.txt
     if errorlevel 1 (
@@ -56,9 +53,20 @@ if not exist ".venv\Lib\site-packages\webview" (
     echo.
 )
 
+:: --- Telecharger les dependances JS si absentes ---
+if not exist "ui\vendor\chart.min.js" (
+    echo  [3/3] Telechargement des dependances UI...
+    if not exist "ui\vendor" mkdir "ui\vendor"
+    curl -sL "https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" -o "ui\vendor\daisyui.min.css"
+    curl -sL "https://cdn.tailwindcss.com" -o "ui\vendor\tailwind.min.js"
+    curl -sL "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" -o "ui\vendor\chart.min.js"
+    echo  OK.
+    echo.
+)
+
 :: --- Lancer l'application ---
 echo  Lancement...
-echo  L'icone apparait dans la barre des taches systeme.
+echo  L'icone apparait dans la barre des taches systeme ^(fleche ^ en bas a droite^).
 echo.
 
 .venv\Scripts\python.exe main.py

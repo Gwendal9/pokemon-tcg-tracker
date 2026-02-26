@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pokemon TCG Tracker</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <link href="vendor/daisyui.min.css" rel="stylesheet">
+    <script src="vendor/tailwind.min.js"></script>
+    <script src="vendor/chart.min.js"></script>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body class="min-h-screen">
 
-    <!-- Navbar fixe 48px -->
+    <!-- Navbar fixe -->
     <nav class="navbar fixed top-0 z-10 h-12 px-4 bg-base-200 border-b border-base-300">
         <div class="flex flex-1 gap-1">
             <button class="tab tab-active" data-tab="dashboard">Dashboard</button>
@@ -19,8 +19,14 @@
             <button class="tab" data-tab="decks">Decks</button>
             <button class="tab" data-tab="config">Config</button>
         </div>
+        <!-- Bouton ajout match -->
+        <button class="btn btn-primary btn-sm mr-2"
+                onclick="matchForm.open()"
+                title="Ajouter un match manuellement">
+            + Match
+        </button>
         <!-- Toggle thème -->
-        <label class="swap swap-rotate ml-auto cursor-pointer" title="Basculer le thème">
+        <label class="swap swap-rotate cursor-pointer" title="Basculer le thème">
             <input id="theme-toggle" type="checkbox">
             <span class="swap-on text-lg">☀️</span>
             <span class="swap-off text-lg">🌙</span>
@@ -30,79 +36,141 @@
     <!-- Contenu principal -->
     <main class="pt-14 max-w-[1100px] mx-auto px-4">
 
-        <!-- Onglet Dashboard (Epic 4 stories 4.2–4.6) -->
+        <!-- Onglet Dashboard -->
         <section id="tab-dashboard">
-            <div class="kpi-row"><!-- Story 4.2 : stats-bar.js --></div>
-            <div class="charts-row"><!-- Story 4.3 : chart-winrate.js | Story 4.6 : detail-panel --></div>
-            <div class="table-section"><!-- Story 4.4 : match-table.js --></div>
+            <div class="kpi-row mt-4"><!-- stats-bar.js --></div>
+            <div class="charts-row"><!-- chart-winrate.js --></div>
+            <div class="table-section"><!-- match-table.js --></div>
         </section>
 
-        <!-- Onglet Historique (placeholder Story 4.4) -->
-        <section id="tab-history" class="hidden">
-            <!-- Story 4.4 : match-table.js -->
+        <!-- Onglet Historique -->
+        <section id="tab-history" class="hidden mt-4">
+            <!-- match-table.js -->
         </section>
 
-        <!-- Onglet Decks (contenu Story 2.1) -->
-        <section id="tab-decks" class="hidden">
-            <h2>Mes Decks</h2>
+        <!-- Onglet Decks -->
+        <section id="tab-decks" class="hidden mt-4">
+            <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-base-300">Mes Decks</h2>
 
-            <!-- Formulaire création -->
-            <div class="deck-form">
-                <input id="deck-name-input" type="text" placeholder="Nom du deck" maxlength="100">
-                <button id="deck-create-btn">Créer</button>
-                <p id="deck-form-error" class="error-inline" style="display:none;"></p>
+            <div class="flex gap-2 mb-4">
+                <input id="deck-name-input"
+                       type="text"
+                       placeholder="Nom du deck"
+                       maxlength="100"
+                       class="input input-bordered flex-1 max-w-xs">
+                <button id="deck-create-btn" class="btn btn-primary">Créer</button>
             </div>
+            <p id="deck-form-error" class="text-error text-sm mb-3" style="display:none;"></p>
 
-            <!-- Liste des decks -->
             <div id="decks-list"></div>
         </section>
 
-        <!-- Onglet Config (contenu Stories 2.2–2.4) -->
-        <section id="tab-config" class="hidden">
-            <h2>Configuration</h2>
+        <!-- Onglet Config -->
+        <section id="tab-config" class="hidden mt-4">
+            <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-base-300">Configuration</h2>
 
-            <div class="config-group">
-                <h3>Région MUMU</h3>
-                <div id="config-region-display" class="region-display"></div>
-                <button id="config-region-select-btn">Configurer la région MUMU</button>
-                <p id="config-status" class="config-status" style="display:none;"></p>
+            <!-- Région MUMU -->
+            <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Région MUMU</h3>
+                <div id="config-region-display" class="font-mono text-sm opacity-70 mb-2"></div>
+                <button id="config-region-select-btn" class="btn btn-sm btn-outline">
+                    Configurer la région MUMU
+                </button>
+                <p id="config-status" class="text-success text-sm mt-2" style="display:none;"></p>
             </div>
 
-            <div class="config-group">
-                <h3>Deck actif</h3>
-                <label for="active-deck-select">Deck utilisé pour la prochaine session :</label>
-                <select id="active-deck-select">
+            <!-- Deck actif -->
+            <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Deck actif</h3>
+                <label for="active-deck-select" class="text-sm block mb-2">
+                    Deck utilisé pour la prochaine session :
+                </label>
+                <select id="active-deck-select" class="select select-bordered select-sm w-full max-w-xs">
                     <option value="">— Aucun deck actif —</option>
                 </select>
-                <p id="active-deck-confirm" class="config-confirm" style="display:none;"></p>
+                <p id="active-deck-confirm" class="text-success text-sm mt-2" style="display:none;"></p>
             </div>
 
-            <div class="config-group">
-                <h3>Test de capture en direct</h3>
-                <p id="capture-status-text" class="capture-status"></p>
-                <button id="capture-test-btn">Tester la capture</button>
-                <p id="capture-error" class="error-inline" style="display:none;"></p>
-                <img id="capture-preview" alt="Aperçu capture MUMU" style="display:none; max-width:100%; margin-top:8px;">
+            <!-- Test capture -->
+            <div class="bg-base-200 rounded-box p-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">
+                    Test de capture en direct
+                </h3>
+                <p id="capture-status-text" class="text-sm opacity-70 mb-2"></p>
+                <button id="capture-test-btn" class="btn btn-sm btn-outline">Tester la capture</button>
+                <p id="capture-error" class="text-error text-sm mt-2" style="display:none;"></p>
+                <img id="capture-preview"
+                     alt="Aperçu capture MUMU"
+                     style="display:none; max-width:100%; margin-top:8px; border-radius:8px;">
             </div>
         </section>
 
     </main>
 
-    <!-- Detail Panel (Story 4.6 — slide-in depuis droite) -->
-    <aside id="detail-panel" class="detail-panel">
-        <!-- contenu injecté dynamiquement par detail-panel.js -->
-    </aside>
+    <!-- Detail Panel (slide-in depuis droite) -->
+    <aside id="detail-panel" class="detail-panel"></aside>
 
-    <!-- Scripts composants existants -->
+    <!-- Modal saisie manuelle de match -->
+    <dialog id="match-form-modal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">Ajouter un match</h3>
+            <div class="flex flex-col gap-3">
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Résultat</span></label>
+                    <select id="mf-result" class="select select-bordered">
+                        <option value="W">Victoire (W)</option>
+                        <option value="L">Défaite (L)</option>
+                        <option value="D">Nul (D)</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Deck joué</span></label>
+                    <select id="mf-deck" class="select select-bordered">
+                        <option value="">— Aucun —</option>
+                    </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Adversaire (deck)</span></label>
+                    <input id="mf-opponent" type="text" placeholder="ex: Charizard ex"
+                           class="input input-bordered" maxlength="100">
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Premier à jouer</span></label>
+                    <select id="mf-first" class="select select-bordered">
+                        <option value="?">Inconnu</option>
+                        <option value="Moi">Moi</option>
+                        <option value="Adversaire">Adversaire</option>
+                    </select>
+                </div>
+
+                <p id="mf-error" class="text-error text-sm" style="display:none;"></p>
+            </div>
+
+            <div class="modal-action">
+                <button class="btn btn-ghost"
+                        onclick="document.getElementById('match-form-modal').close()">
+                    Annuler
+                </button>
+                <button class="btn btn-primary" id="mf-submit">Enregistrer</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>Fermer</button></form>
+    </dialog>
+
+    <!-- Scripts -->
     <script src="components/deck-manager.js"></script>
     <script src="components/config-manager.js"></script>
     <script src="components/capture-test.js"></script>
     <script src="components/active-deck-selector.js"></script>
-    <!-- Scripts Epic 4 (stubs — implémentés dans stories 4.2–4.6) -->
     <script src="components/stats-bar.js"></script>
     <script src="components/chart-winrate.js"></script>
     <script src="components/match-table.js"></script>
     <script src="components/detail-panel.js"></script>
+    <script src="components/match-form.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

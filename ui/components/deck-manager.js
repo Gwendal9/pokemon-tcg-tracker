@@ -55,16 +55,49 @@ class DeckManager {
     }
 
     _handleUpdate(deckId, currentName) {
-        const newName = prompt('Nouveau nom du deck :', currentName);
-        if (newName === null) return; // annulé
-        if (!newName || !newName.trim()) {
-            this._showError('Le nom du deck ne peut pas être vide');
-            return;
-        }
-        this._clearError();
-        window.dispatchEvent(new CustomEvent('deck-update-requested', {
-            detail: { deck_id: deckId, name: newName.trim() }
-        }));
+        // Remplacer le span du nom par un input inline (prompt() non supporté dans pywebview)
+        const item = this._container.querySelector(`.deck-item[data-id="${deckId}"]`);
+        if (!item) return;
+        const nameSpan = item.querySelector('.deck-name');
+        if (!nameSpan) return;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentName;
+        input.maxLength = 100;
+        input.className = 'input input-bordered input-sm flex-1';
+        input.style.maxWidth = '220px';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = '✓';
+        saveBtn.className = 'btn btn-success btn-xs';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '✕';
+        cancelBtn.className = 'btn btn-ghost btn-xs';
+
+        nameSpan.replaceWith(input);
+        const actions = item.querySelector('.deck-actions');
+        actions.innerHTML = '';
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+        input.focus();
+        input.select();
+
+        const doSave = () => {
+            const newName = input.value.trim();
+            if (!newName) { this._showError('Le nom ne peut pas être vide'); return; }
+            this._clearError();
+            window.dispatchEvent(new CustomEvent('deck-update-requested', {
+                detail: { deck_id: deckId, name: newName }
+            }));
+        };
+        saveBtn.addEventListener('click', doSave);
+        cancelBtn.addEventListener('click', () => this._loadDecks());
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') doSave();
+            if (e.key === 'Escape') this._loadDecks();
+        });
     }
 
     _handleDelete(deckId) {
