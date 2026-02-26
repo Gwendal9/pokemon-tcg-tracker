@@ -7,6 +7,9 @@
  * - Les composants dispatche des events, ce fichier les écoute et répond
  */
 
+// Saison active globale (null = toutes les saisons)
+window._ptcgSeason = null;
+
 window.addEventListener('pywebviewready', function () {
     // Navigation et thème (Story 4.1)
     initTabs();
@@ -42,6 +45,20 @@ window.addEventListener('pywebviewready', function () {
     if (typeof matchForm !== 'undefined') {
         matchForm.init();
     }
+
+    // Filtre saison
+    var seasonFilter = document.getElementById('season-filter');
+    if (seasonFilter) {
+        seasonFilter.addEventListener('change', function () {
+            window._ptcgSeason = seasonFilter.value || null;
+            window.dispatchEvent(new CustomEvent('stats-load-requested'));
+            window.dispatchEvent(new CustomEvent('matches-load-requested'));
+        });
+        window.dispatchEvent(new CustomEvent('seasons-load-requested'));
+    }
+
+    // Statut calibration
+    window.dispatchEvent(new CustomEvent('calibration-status-requested'));
 });
 
 // ---------------------------------------------------------------------------
@@ -200,7 +217,7 @@ window.addEventListener('capture-test-requested', async function () {
 
 window.addEventListener('stats-load-requested', async function (e) {
     try {
-        var season = e.detail && e.detail.season ? e.detail.season : undefined;
+        var season = (e.detail && e.detail.season) || window._ptcgSeason || undefined;
         var stats = season !== undefined
             ? await window.pywebview.api.get_stats(season)
             : await window.pywebview.api.get_stats();
@@ -272,8 +289,9 @@ window.addEventListener('match-save-requested', async function (e) {
 
 window.addEventListener('matches-load-requested', async function () {
     try {
+        var _season = window._ptcgSeason || undefined;
         const [matches, decks] = await Promise.all([
-            window.pywebview.api.get_matches(),
+            _season ? window.pywebview.api.get_matches(_season) : window.pywebview.api.get_matches(),
             window.pywebview.api.get_decks(),
         ]);
         if (matches && matches.error) {
@@ -313,5 +331,93 @@ window.addEventListener('match-update-field-requested', async function (e) {
         window.dispatchEvent(new CustomEvent('match-updated', { detail: { match_id: e.detail.match_id } }));
     } catch (err) {
         window.dispatchEvent(new CustomEvent('match-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Seasons bridge (Item 2)
+// ---------------------------------------------------------------------------
+
+window.addEventListener('seasons-load-requested', async function () {
+    try {
+        const seasons = await window.pywebview.api.get_seasons();
+        if (seasons && seasons.error) return;
+        window.dispatchEvent(new CustomEvent('seasons-loaded', { detail: { seasons: seasons || [] } }));
+    } catch (err) {}
+});
+
+window.addEventListener('seasons-loaded', function (e) {
+    var sel = document.getElementById('season-filter');
+    if (!sel) return;
+    var current = sel.value;
+    var html = '<option value="">Toutes les saisons</option>';
+    (e.detail.seasons || []).forEach(function (s) {
+        html += '<option value="' + s + '"' + (current === s ? ' selected' : '') + '>' + s + '</option>';
+    });
+    sel.innerHTML = html;
+    if (current) sel.value = current;
+});
+
+window.addEventListener('match-created', function () {
+    window.dispatchEvent(new CustomEvent('seasons-load-requested'));
+});
+
+// ---------------------------------------------------------------------------
+// Calibration bridge (Item 3)
+// ---------------------------------------------------------------------------
+
+function app_calibrate(stateName) {
+    window.dispatchEvent(new CustomEvent('calibrate-state-requested', { detail: { state: stateName } }));
+}
+
+window.addEventListener('calibrate-state-requested', async function (e) {
+    var calError   = document.getElementById('cal-error');
+    var calSuccess = document.getElementById('cal-success');
+    if (calError)   { calError.textContent = '';   calError.style.display   = 'none'; }
+    if (calSuccess) { calSuccess.textContent = ''; calSuccess.style.display = 'none'; }
+    try {
+        var result = await window.pywebview.api.calibrate_state(e.detail.state);
+        if (result && result.error) {
+            if (calError) { calError.textContent = result.error; calError.style.display = ''; }
+            return;
+        }
+        if (calSuccess) {
+            calSuccess.textContent = 'Calibration réussie : ' + e.detail.state.replace(/_/g, ' ');
+            calSuccess.style.display = '';
+        }
+        window.dispatchEvent(new CustomEvent('calibration-status-requested'));
+    } catch (err) {
+        if (calError) { calError.textContent = 'Erreur inattendue'; calError.style.display = ''; }
+    }
+});
+
+window.addEventListener('calibration-status-requested', async function () {
+    try {
+        var status = await window.pywebview.api.get_calibration_status();
+        ['pre_queue', 'in_combat', 'end_screen'].forEach(function (s) {
+            var el = document.getElementById('cal-status-' + s);
+            if (!el) return;
+            var calibrated = status && status[s];
+            el.textContent = calibrated ? '✓ Calibré' : '✗ Non calibré';
+            el.style.color  = calibrated ? 'var(--color-win)' : 'var(--color-loss)';
+        });
+    } catch (err) {}
+});
+
+// ---------------------------------------------------------------------------
+// Export CSV bridge (Item 4)
+// ---------------------------------------------------------------------------
+
+window.addEventListener('export-csv-requested', async function () {
+    var exportError = document.getElementById('export-error');
+    if (exportError) exportError.style.display = 'none';
+    try {
+        var result = await window.pywebview.api.export_matches_csv();
+        if (result && result.error) {
+            if (exportError) { exportError.textContent = result.error; exportError.style.display = ''; }
+        }
+        // Si succès, Python ouvre le CSV automatiquement via os.startfile()
+    } catch (err) {
+        if (exportError) { exportError.textContent = 'Erreur lors de l\'export'; exportError.style.display = ''; }
     }
 });

@@ -15,6 +15,7 @@ DEFAULT_CONFIG_PATH = os.path.normpath(os.path.join(_HERE, "..", "data", "config
 CONFIG_DEFAULTS = {
     "mumu_region": None,
     "active_deck_id": None,
+    "active_season": None,
     "theme": "ptcg-dark",
 }
 

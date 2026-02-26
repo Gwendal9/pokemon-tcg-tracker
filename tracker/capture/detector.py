@@ -1,16 +1,30 @@
 """tracker/capture/detector.py — Machine à états combat + boucle de polling MUMU.
 
 CombatState : IDLE → PRE_QUEUE → IN_COMBAT → END_SCREEN → IDLE
-StateDetector : détecte l'état du jeu depuis une capture PIL (stubs à calibrer).
+StateDetector : détecte l'état du jeu depuis une capture PIL.
 PollingLoop : thread daemon 100ms — détecte MUMU + pilote les transitions d'état.
 """
 import logging
+import os
 import threading
 from enum import Enum
+
+from PIL import Image
 
 from tracker.capture.screen import capture_region_pil, find_mumu_window
 
 logger = logging.getLogger(__name__)
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_CAL_DIR = os.path.normpath(os.path.join(_HERE, "..", "..", "data", "calibration"))
+_REF_PATHS = {
+    "pre_queue":  os.path.join(_CAL_DIR, "pre_queue.png"),
+    "in_combat":  os.path.join(_CAL_DIR, "in_combat.png"),
+    "end_screen": os.path.join(_CAL_DIR, "end_screen.png"),
+}
+
+# Seuil MSE — valeur basse = images similaires. À ajuster si trop sensible.
+_MSE_THRESHOLD = 2000.0
 
 
 class CombatState(Enum):
@@ -24,48 +38,102 @@ class CombatState(Enum):
 class StateDetector:
     """Détecte l'état du jeu Pokemon TCG Pocket depuis une image PIL.
 
-    Les méthodes retournent False par défaut — stubs à calibrer sur Windows
-    avec de vrais screenshots une fois MUMU configuré.
-
     Calibration :
-    1. Capturer un screenshot de chaque état via api.capture_test_frame()
-    2. Identifier les pixels/régions caractéristiques de chaque état
-    3. Remplacer les stubs par des checks de couleur/template matching
+    1. Lancer le jeu dans l'état voulu
+    2. Appeler calibrate(state_name, img) pour sauvegarder l'image de référence
+    3. Les détections suivantes comparent par MSE l'image capturée à la référence
+
+    Sans calibration (pas de fichier PNG de référence), toutes les méthodes
+    retournent False — aucune transition ne peut avoir lieu.
     """
 
-    def is_pre_queue_ranked(self, img) -> bool:
-        """Détecte l'écran de file d'attente ranked (avant le combat).
+    def __init__(self):
+        self._refs = {}  # cache {state_name: Image.Image ou None}
 
-        Indicateurs visuels Pokemon TCG Pocket :
-        - Bouton "Battle!" ou icône ranked visible
-        - Fond/disposition spécifique de l'écran de queue ranked
+    # ------------------------------------------------------------------
+    # Calibration
+    # ------------------------------------------------------------------
 
-        TODO: Calibrer avec screenshot réel de l'écran pré-queue ranked.
+    def calibrate(self, state_name: str, img) -> bool:
+        """Sauvegarde img comme référence pour state_name.
+
+        Args:
+            state_name: 'pre_queue', 'in_combat' ou 'end_screen'.
+            img: PIL Image capturée dans cet état.
+
+        Returns:
+            True si sauvegardé, False si state_name invalide ou erreur I/O.
         """
-        return False
+        if state_name not in _REF_PATHS:
+            logger.warning("calibrate: état inconnu '%s'", state_name)
+            return False
+        os.makedirs(_CAL_DIR, exist_ok=True)
+        try:
+            img.convert("RGB").save(_REF_PATHS[state_name])
+            self._refs.pop(state_name, None)  # invalider le cache
+            logger.info("Calibration sauvegardée : %s → %s", state_name, _REF_PATHS[state_name])
+            return True
+        except Exception as e:
+            logger.error("calibrate %s: %s", state_name, e)
+            return False
+
+    def is_calibrated(self, state_name: str) -> bool:
+        """Retourne True si un fichier de référence existe pour state_name."""
+        return os.path.exists(_REF_PATHS.get(state_name, ""))
+
+    # ------------------------------------------------------------------
+    # Détection (MSE contre référence calibrée)
+    # ------------------------------------------------------------------
+
+    def is_pre_queue_ranked(self, img) -> bool:
+        """Détecte l'écran de file d'attente ranked."""
+        ref = self._load_ref("pre_queue")
+        if ref is None:
+            return False
+        return self._compare(img, ref) < _MSE_THRESHOLD
 
     def is_in_combat(self, img) -> bool:
-        """Détecte que le combat est actuellement en cours.
-
-        Indicateurs visuels Pokemon TCG Pocket :
-        - Main de cartes visible en bas
-        - Zone de jeu avec HP trackers
-        - Interface de combat active
-
-        TODO: Calibrer avec screenshot réel de l'écran de combat.
-        """
-        return False
+        """Détecte que le combat est actuellement en cours."""
+        ref = self._load_ref("in_combat")
+        if ref is None:
+            return False
+        return self._compare(img, ref) < _MSE_THRESHOLD
 
     def is_end_screen(self, img) -> bool:
-        """Détecte l'écran de résultat de fin de combat (WIN/LOSE).
+        """Détecte l'écran de résultat de fin de combat (WIN/LOSE)."""
+        ref = self._load_ref("end_screen")
+        if ref is None:
+            return False
+        return self._compare(img, ref) < _MSE_THRESHOLD
 
-        Indicateurs visuels Pokemon TCG Pocket :
-        - Texte "WIN!" ou "LOSE!" (ou "DRAW")
-        - Fond caractéristique de l'écran de résultat
+    # ------------------------------------------------------------------
+    # Méthodes internes
+    # ------------------------------------------------------------------
 
-        TODO: Calibrer avec screenshot réel de l'écran de fin.
-        """
-        return False
+    def _load_ref(self, state_name):
+        """Charge et met en cache l'image de référence (lazy)."""
+        if state_name not in self._refs:
+            path = _REF_PATHS.get(state_name, "")
+            if os.path.exists(path):
+                try:
+                    self._refs[state_name] = Image.open(path).convert("RGB")
+                except Exception as e:
+                    logger.error("_load_ref %s: %s", state_name, e)
+                    self._refs[state_name] = None
+            else:
+                self._refs[state_name] = None
+        return self._refs[state_name]
+
+    def _compare(self, img, ref_img) -> float:
+        """MSE pixel-par-pixel entre img et ref_img. Valeur basse = similaire."""
+        try:
+            import numpy as np  # noqa: PLC0415 — lazy import (disponible via easyocr)
+            target = img.convert("RGB").resize(ref_img.size, Image.LANCZOS)
+            arr1 = np.asarray(target, dtype=float)
+            arr2 = np.asarray(ref_img, dtype=float)
+            return float(np.mean((arr1 - arr2) ** 2))
+        except Exception:
+            return float("inf")
 
 
 class PollingLoop:

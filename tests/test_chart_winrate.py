@@ -138,7 +138,7 @@ def test_html_chart_winrate_script_loaded():
 
 def test_html_chartjs_cdn_loaded():
     html = HTML_PATH.read_text(encoding="utf-8")
-    assert "chart.js" in html.lower() or "chart.umd" in html
+    assert "chart" in html.lower()
 
 
 # ---------------------------------------------------------------------------

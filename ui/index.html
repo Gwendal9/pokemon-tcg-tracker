@@ -38,13 +38,27 @@
 
         <!-- Onglet Dashboard -->
         <section id="tab-dashboard">
-            <div class="kpi-row mt-4"><!-- stats-bar.js --></div>
+            <div class="flex justify-between items-center mt-4 mb-2">
+                <h2 class="text-xl font-semibold">Dashboard</h2>
+                <select id="season-filter" class="select select-sm select-bordered min-w-[180px]">
+                    <option value="">Toutes les saisons</option>
+                </select>
+            </div>
+            <div class="kpi-row"><!-- stats-bar.js --></div>
             <div class="charts-row"><!-- chart-winrate.js --></div>
             <div class="table-section"><!-- match-table.js --></div>
         </section>
 
         <!-- Onglet Historique -->
         <section id="tab-history" class="hidden mt-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Historique</h2>
+                <button class="btn btn-sm btn-outline"
+                        onclick="window.dispatchEvent(new CustomEvent('export-csv-requested'))">
+                    Exporter CSV
+                </button>
+            </div>
+            <p id="export-error" class="text-error text-sm mb-2" style="display:none;"></p>
             <!-- match-table.js -->
         </section>
 
@@ -92,7 +106,7 @@
             </div>
 
             <!-- Test capture -->
-            <div class="bg-base-200 rounded-box p-4 border border-base-300">
+            <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
                 <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">
                     Test de capture en direct
                 </h3>
@@ -102,6 +116,45 @@
                 <img id="capture-preview"
                      alt="Aperçu capture MUMU"
                      style="display:none; max-width:100%; margin-top:8px; border-radius:8px;">
+            </div>
+
+            <!-- Calibration détecteur -->
+            <div class="bg-base-200 rounded-box p-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">
+                    Calibration du détecteur d'état
+                </h3>
+                <p class="text-sm opacity-70 mb-3">
+                    Pour chaque état, lancez le jeu dans cet état et cliquez "Calibrer".
+                    Le détecteur comparera les captures suivantes à ces références.
+                </p>
+                <div class="flex flex-col gap-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm">Pré-queue ranked</span>
+                        <div class="flex items-center gap-3">
+                            <span id="cal-status-pre_queue" class="text-xs"></span>
+                            <button class="btn btn-sm btn-outline"
+                                    onclick="app_calibrate('pre_queue')">Calibrer</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm">En combat</span>
+                        <div class="flex items-center gap-3">
+                            <span id="cal-status-in_combat" class="text-xs"></span>
+                            <button class="btn btn-sm btn-outline"
+                                    onclick="app_calibrate('in_combat')">Calibrer</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm">Fin de match</span>
+                        <div class="flex items-center gap-3">
+                            <span id="cal-status-end_screen" class="text-xs"></span>
+                            <button class="btn btn-sm btn-outline"
+                                    onclick="app_calibrate('end_screen')">Calibrer</button>
+                        </div>
+                    </div>
+                </div>
+                <p id="cal-error"   class="text-error   text-sm mt-3" style="display:none;"></p>
+                <p id="cal-success" class="text-success text-sm mt-3" style="display:none;"></p>
             </div>
         </section>
 
@@ -145,6 +198,12 @@
                         <option value="Moi">Moi</option>
                         <option value="Adversaire">Adversaire</option>
                     </select>
+                </div>
+
+                <div class="form-control">
+                    <label class="label"><span class="label-text">Saison (optionnel)</span></label>
+                    <input id="mf-season" type="text" placeholder="ex: 2025-A1"
+                           class="input input-bordered" maxlength="50">
                 </div>
 
                 <p id="mf-error" class="text-error text-sm" style="display:none;"></p>

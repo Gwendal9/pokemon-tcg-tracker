@@ -35,7 +35,7 @@ class TrayManager:
     def run(self) -> None:
         """Construit et démarre l'icône tray (bloquant)."""
         menu = pystray.Menu(
-            pystray.MenuItem("Ouvrir le dashboard", self._on_open_dashboard),
+            pystray.MenuItem("Ouvrir le dashboard", self._on_open_dashboard, default=True),
             pystray.MenuItem("Quitter", self._on_quit),
         )
         image = self._create_icon_image(_COLOR_INACTIVE)

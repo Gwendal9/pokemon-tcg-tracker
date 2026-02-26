@@ -134,6 +134,17 @@ class Models:
         finally:
             conn.close()
 
+    def get_seasons(self) -> list:
+        """Retourne les saisons distinctes (non nulles) triées DESC."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT season FROM matches WHERE season IS NOT NULL ORDER BY season DESC"
+            ).fetchall()
+            return [row["season"] for row in rows]
+        finally:
+            conn.close()
+
     def update_match_field(self, match_id: int, field: str, value: str) -> bool:
         if field not in ALLOWED_MATCH_FIELDS:
             logger.warning("update_match_field: champ non autorisé '%s'", field)

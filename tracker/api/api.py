@@ -15,7 +15,7 @@ import threading
 from tracker.db.database import DatabaseManager
 from tracker.db.models import Models
 from tracker.config import ConfigManager
-from tracker.capture.screen import capture_region, select_region_interactive
+from tracker.capture.screen import capture_region, capture_region_pil, select_region_interactive
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +167,14 @@ class TrackerAPI:
             logger.error("save_match: %s", e)
             return {"error": str(e)}
 
+    async def get_seasons(self) -> list:
+        """Retourne les saisons distinctes (non nulles) présentes dans la DB."""
+        try:
+            return self._models.get_seasons()
+        except Exception as e:
+            logger.error("get_seasons: %s", e)
+            return {"error": str(e)}
+
     async def get_matches(self, season: str = None, deck_id: int = None) -> list:
         """Retourne l'historique des matchs."""
         try:
@@ -226,3 +234,83 @@ class TrackerAPI:
             "state": "idle",
             "region_configured": region is not None,
         }
+
+    # -------------------------------------------------------------------------
+    # Calibration StateDetector (Story 3.2)
+    # -------------------------------------------------------------------------
+
+    async def get_calibration_status(self) -> dict:
+        """Retourne l'état de calibration pour chaque état de détection."""
+        try:
+            if self._polling is None or self._polling._detector is None:
+                return {"pre_queue": False, "in_combat": False, "end_screen": False}
+            d = self._polling._detector
+            return {
+                "pre_queue":  d.is_calibrated("pre_queue"),
+                "in_combat":  d.is_calibrated("in_combat"),
+                "end_screen": d.is_calibrated("end_screen"),
+            }
+        except Exception as e:
+            logger.error("get_calibration_status: %s", e)
+            return {"error": str(e)}
+
+    async def calibrate_state(self, state_name: str) -> dict:
+        """Capture le frame MUMU actuel et l'enregistre comme référence pour state_name.
+
+        state_name : 'pre_queue', 'in_combat' ou 'end_screen'.
+        Retourne {"ok": True} ou {"error": "..."}.
+        """
+        try:
+            config = self._config.get_all()
+            region = config.get("mumu_region")
+            if not region:
+                return {"error": "Aucune région configurée. Configurez d'abord la région MUMU."}
+            if self._polling is None or self._polling._detector is None:
+                return {"error": "Détecteur non initialisé."}
+            img = capture_region_pil(region)
+            if img is None:
+                return {"error": "Capture échouée. Vérifiez que MUMU Player est visible."}
+            ok = self._polling._detector.calibrate(state_name, img)
+            if not ok:
+                return {"error": f"État '{state_name}' invalide."}
+            return {"ok": True, "state": state_name}
+        except Exception as e:
+            logger.error("calibrate_state: %s", e)
+            return {"error": str(e)}
+
+    # -------------------------------------------------------------------------
+    # Export CSV
+    # -------------------------------------------------------------------------
+
+    async def export_matches_csv(self) -> dict:
+        """Exporte tous les matchs en CSV dans data/matches_export.csv et l'ouvre.
+
+        Retourne {"ok": True, "path": ...} ou {"error": "..."}.
+        """
+        import csv
+        import os as _os
+        try:
+            matches = self._models.get_matches()
+            decks = {d["id"]: d["name"] for d in self._models.get_decks()}
+            data_dir = _os.path.normpath(
+                _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "data")
+            )
+            _os.makedirs(data_dir, exist_ok=True)
+            csv_path = _os.path.join(data_dir, "matches_export.csv")
+            with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Date", "Résultat", "Deck", "Adversaire", "Premier", "Saison"])
+                for m in matches:
+                    writer.writerow([
+                        m.get("captured_at", ""),
+                        m.get("result", ""),
+                        decks.get(m.get("deck_id"), ""),
+                        m.get("opponent", ""),
+                        m.get("first_player", ""),
+                        m.get("season", ""),
+                    ])
+            _os.startfile(_os.path.abspath(csv_path))
+            return {"ok": True, "path": csv_path}
+        except Exception as e:
+            logger.error("export_matches_csv: %s", e)
+            return {"error": str(e)}

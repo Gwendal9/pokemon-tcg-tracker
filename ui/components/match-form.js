@@ -42,17 +42,20 @@ var matchForm = {
     },
 
     _submit: function () {
-        var result     = document.getElementById('mf-result').value;
-        var deckVal    = document.getElementById('mf-deck').value;
-        var opponent   = (document.getElementById('mf-opponent').value || '').trim() || '?';
+        var result      = document.getElementById('mf-result').value;
+        var deckVal     = document.getElementById('mf-deck').value;
+        var opponent    = (document.getElementById('mf-opponent').value || '').trim() || '?';
         var firstPlayer = document.getElementById('mf-first').value;
+        var seasonEl    = document.getElementById('mf-season');
+        var season      = seasonEl ? (seasonEl.value.trim() || null) : null;
 
         window.dispatchEvent(new CustomEvent('match-save-requested', {
             detail: {
                 result:       result,
                 deck_id:      deckVal ? parseInt(deckVal) : null,
                 opponent:     opponent,
-                first_player: firstPlayer
+                first_player: firstPlayer,
+                season:       season
             }
         }));
     },
@@ -61,10 +64,12 @@ var matchForm = {
         var r = document.getElementById('mf-result');
         var o = document.getElementById('mf-opponent');
         var f = document.getElementById('mf-first');
+        var s = document.getElementById('mf-season');
         var e = document.getElementById('mf-error');
         if (r) r.value = 'W';
         if (o) o.value = '';
         if (f) f.value = '?';
+        if (s) s.value = '';
         if (e) { e.textContent = ''; e.style.display = 'none'; }
     }
 };

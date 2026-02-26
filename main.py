@@ -154,7 +154,7 @@ def main() -> None:
     polling_thread.start()
 
     # Boucle GUI pywebview (bloquant jusqu'à window.destroy())
-    webview.start(debug=True)
+    webview.start()
     logger.info("Application fermée proprement")
 
 
