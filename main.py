@@ -136,7 +136,7 @@ def main() -> None:
                 logger.info("Match enregistré: id=%d", saved["id"])
                 ocr_state.pending_match = None
                 window.evaluate_js(
-                    "window.dispatchEvent(new CustomEvent('match-created'))"
+                    "window.dispatchEvent(new CustomEvent('match-created',{detail:{auto:true}}))"
                 )
             except Exception as e:
                 logger.error("Enregistrement match échoué: %s", e)

@@ -46,15 +46,19 @@ window.addEventListener('pywebviewready', function () {
         matchForm.init();
     }
 
-    // Filtre saison
+    // Filtre saison (restaure la valeur sauvegardée, puis charge la liste)
     var seasonFilter = document.getElementById('season-filter');
     if (seasonFilter) {
         seasonFilter.addEventListener('change', function () {
             window._ptcgSeason = seasonFilter.value || null;
+            window.dispatchEvent(new CustomEvent('active-season-save-requested', {
+                detail: { season: window._ptcgSeason }
+            }));
             window.dispatchEvent(new CustomEvent('stats-load-requested'));
             window.dispatchEvent(new CustomEvent('matches-load-requested'));
         });
-        window.dispatchEvent(new CustomEvent('seasons-load-requested'));
+        // active-season-load-requested : lit la config, restaure _ptcgSeason, puis charge les saisons
+        window.dispatchEvent(new CustomEvent('active-season-load-requested'));
     }
 
     // Statut calibration
@@ -338,6 +342,21 @@ window.addEventListener('match-update-field-requested', async function (e) {
 // Seasons bridge (Item 2)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Toast notifications
+// ---------------------------------------------------------------------------
+
+function showToast(msg, type) {
+    var container = document.getElementById('toast-container');
+    if (!container) return;
+    var div = document.createElement('div');
+    var cls = type === 'success' ? 'alert-success' : type === 'error' ? 'alert-error' : 'alert-info';
+    div.className = 'alert ' + cls + ' shadow py-2 px-4 text-sm';
+    div.textContent = msg;
+    container.appendChild(div);
+    setTimeout(function () { if (div.parentNode) div.remove(); }, 3500);
+}
+
 window.addEventListener('seasons-load-requested', async function () {
     try {
         const seasons = await window.pywebview.api.get_seasons();
@@ -349,7 +368,8 @@ window.addEventListener('seasons-load-requested', async function () {
 window.addEventListener('seasons-loaded', function (e) {
     var sel = document.getElementById('season-filter');
     if (!sel) return;
-    var current = sel.value;
+    // Priorité : valeur actuelle du select, puis saison sauvegardée globalement
+    var current = sel.value || window._ptcgSeason || '';
     var html = '<option value="">Toutes les saisons</option>';
     (e.detail.seasons || []).forEach(function (s) {
         html += '<option value="' + s + '"' + (current === s ? ' selected' : '') + '>' + s + '</option>';
@@ -358,7 +378,9 @@ window.addEventListener('seasons-loaded', function (e) {
     if (current) sel.value = current;
 });
 
-window.addEventListener('match-created', function () {
+window.addEventListener('match-created', function (e) {
+    var isAuto = e.detail && e.detail.auto;
+    showToast(isAuto ? 'Match enregistré automatiquement !' : 'Match enregistré', 'success');
     window.dispatchEvent(new CustomEvent('seasons-load-requested'));
 });
 
@@ -420,4 +442,29 @@ window.addEventListener('export-csv-requested', async function () {
     } catch (err) {
         if (exportError) { exportError.textContent = 'Erreur lors de l\'export'; exportError.style.display = ''; }
     }
+});
+
+// ---------------------------------------------------------------------------
+// Season persistence bridges (Item 1)
+// ---------------------------------------------------------------------------
+
+window.addEventListener('active-season-load-requested', async function () {
+    try {
+        const config = await window.pywebview.api.get_config();
+        if (config && config.active_season) {
+            window._ptcgSeason = config.active_season;
+        }
+    } catch (err) {}
+    // Charger la liste des saisons (et restaurer la valeur dans seasons-loaded)
+    window.dispatchEvent(new CustomEvent('seasons-load-requested'));
+});
+
+window.addEventListener('active-season-save-requested', async function (e) {
+    try {
+        const config = await window.pywebview.api.get_config();
+        if (config && !config.error) {
+            config.active_season = e.detail.season;
+            await window.pywebview.api.save_config(config);
+        }
+    } catch (err) {}
 });
