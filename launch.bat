@@ -8,6 +8,9 @@ echo   Pokemon TCG Tracker
 echo  ==========================================
 echo.
 
+:: --- Le venv est toujours sur un chemin local Windows (pas reseau) ---
+set VENV_DIR=%LOCALAPPDATA%\pokemon-tcg-tracker\.venv
+
 :: --- Verifier que Python est installe ---
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -23,9 +26,9 @@ if errorlevel 1 (
 )
 
 :: --- Creer le venv si absent ---
-if not exist ".venv\Scripts\python.exe" (
+if not exist "%VENV_DIR%\Scripts\python.exe" (
     echo  [1/3] Creation de l'environnement virtuel...
-    python -m venv .venv
+    python -m venv "%VENV_DIR%"
     if errorlevel 1 (
         echo  ERREUR : creation du venv echouee.
         pause
@@ -36,11 +39,11 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 :: --- Installer les dependances Python si pywebview absent ---
-if not exist ".venv\Lib\site-packages\webview" (
+if not exist "%VENV_DIR%\Lib\site-packages\webview" (
     echo  [2/3] Installation des dependances Python...
     echo  ^(premiere fois : peut prendre 2 a 5 minutes^)
     echo.
-    .venv\Scripts\pip install -r requirements.txt
+    "%VENV_DIR%\Scripts\pip" install -r requirements.txt
     if errorlevel 1 (
         echo.
         echo  ERREUR : installation echouee.
@@ -69,7 +72,7 @@ echo  Lancement...
 echo  L'icone apparait dans la barre des taches systeme ^(fleche ^ en bas a droite^).
 echo.
 
-.venv\Scripts\python.exe main.py
+"%VENV_DIR%\Scripts\python.exe" main.py
 
 :: Si l'app se ferme avec une erreur, afficher le log
 if errorlevel 1 (
