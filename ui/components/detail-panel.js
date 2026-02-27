@@ -78,12 +78,14 @@ var detailPanel = {
             : ('<div class="flex gap-1 mb-4">' +
                detailPanel._tabBtn('opponents', 'Adversaires') +
                detailPanel._tabBtn('decks', 'Decks') +
+               detailPanel._tabBtn('first', 'Premier') +
                '</div>');
 
         var bodyHTML;
-        if (detailPanel._activeTab === 'matchup')      bodyHTML = detailPanel._matchupHTML();
+        if (detailPanel._activeTab === 'matchup')          bodyHTML = detailPanel._matchupHTML();
         else if (detailPanel._activeTab === 'deck-detail') bodyHTML = detailPanel._deckDetailHTML();
         else if (detailPanel._activeTab === 'opponents')   bodyHTML = detailPanel._opponentsHTML();
+        else if (detailPanel._activeTab === 'first')       bodyHTML = detailPanel._firstHTML();
         else                                               bodyHTML = detailPanel._decksHTML();
 
         panel.innerHTML =
@@ -240,6 +242,63 @@ var detailPanel = {
                 '<td class="text-right text-sm">' + d.losses + '</td>' +
                 '<td class="text-right text-sm font-bold" style="color:' + wrColor + '">' +
                 wr + '</td>' +
+                '</tr>';
+        });
+
+        html += '</tbody></table>';
+        return html;
+    },
+
+    // -------------------------------------------------------------------------
+    // Onglet Premier à jouer
+    // -------------------------------------------------------------------------
+
+    _firstHTML: function () {
+        var ORDER   = ['Moi', 'Adversaire', '?'];
+        var map     = {};
+        detailPanel._matches.forEach(function (m) {
+            var key = (m.first_player || '?').trim();
+            if (!map[key]) map[key] = { label: key, total: 0, wins: 0, losses: 0 };
+            map[key].total++;
+            if (m.result === 'W') map[key].wins++;
+            if (m.result === 'L') map[key].losses++;
+        });
+
+        var rows = [];
+        ORDER.forEach(function (k) { if (map[k]) rows.push(map[k]); });
+        Object.keys(map).forEach(function (k) {
+            if (!ORDER.includes(k)) rows.push(map[k]);
+        });
+
+        if (rows.length === 0) {
+            return '<p class="text-sm opacity-50 text-center py-8">Aucune donnée</p>';
+        }
+
+        var style     = getComputedStyle(document.documentElement);
+        var colorWin  = style.getPropertyValue('--color-win').trim();
+        var colorLoss = style.getPropertyValue('--color-loss').trim();
+
+        var html =
+            '<table class="table table-xs w-full">' +
+            '<thead><tr>' +
+            '<th>Premier joueur</th>' +
+            '<th class="text-right">Total</th>' +
+            '<th class="text-right">V</th>' +
+            '<th class="text-right">D</th>' +
+            '<th class="text-right">Winrate</th>' +
+            '</tr></thead><tbody>';
+
+        rows.forEach(function (r) {
+            var known   = r.wins + r.losses;
+            var wr      = known > 0 ? (r.wins / known * 100).toFixed(1) + '%' : '—';
+            var wrColor = known === 0 ? 'inherit' : (r.wins / known >= 0.5 ? colorWin : colorLoss);
+            html +=
+                '<tr>' +
+                '<td class="text-sm font-medium">' + detailPanel._esc(r.label) + '</td>' +
+                '<td class="text-right text-sm">' + r.total + '</td>' +
+                '<td class="text-right text-sm">' + r.wins + '</td>' +
+                '<td class="text-right text-sm">' + r.losses + '</td>' +
+                '<td class="text-right text-sm font-bold" style="color:' + wrColor + '">' + wr + '</td>' +
                 '</tr>';
         });
 

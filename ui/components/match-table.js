@@ -80,8 +80,8 @@ var matchTable = {
             '<select data-mt-filter-deck class="select select-sm select-bordered">' +
             '<option value="">Tous les decks</option>' +
             '</select>' +
-            '<input data-mt-filter-search type="search" placeholder="Chercher adversaire…"' +
-            ' class="input input-sm input-bordered w-44">' +
+            '<input data-mt-filter-search type="search" placeholder="Chercher adversaire, deck, notes…"' +
+            ' class="input input-sm input-bordered w-52">' +
             '<select data-mt-filter-date class="select select-sm select-bordered">' +
             '<option value="all">Toutes dates</option>' +
             '<option value="7d">7 derniers jours</option>' +
@@ -170,7 +170,12 @@ var matchTable = {
         var filtered = matchTable._matches.filter(function (m) {
             if (matchTable._filterResult !== 'all' && m.result !== matchTable._filterResult) return false;
             if (matchTable._filterDeck !== '' && String(m.deck_id) !== matchTable._filterDeck) return false;
-            if (_search && !(m.opponent || '').toLowerCase().includes(_search)) return false;
+            if (_search) {
+                var _deckName = (matchTable._decksMap[m.deck_id] || '').toLowerCase();
+                if (!(m.opponent || '').toLowerCase().includes(_search) &&
+                    !(m.notes    || '').toLowerCase().includes(_search) &&
+                    !_deckName.includes(_search)) return false;
+            }
             if (_dateCutoff && new Date(m.captured_at).getTime() < _dateCutoff) return false;
             if (_tag && !(m.tags || '').split(',').map(function(t){return t.trim();}).includes(_tag)) return false;
             return true;

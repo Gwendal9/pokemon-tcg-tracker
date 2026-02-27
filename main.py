@@ -21,6 +21,7 @@ import threading
 import webview
 
 from tracker.api.api import TrackerAPI
+from tracker.backup import backup_db
 from tracker.capture.detector import CombatState, PollingLoop, StateDetector
 from tracker.capture.ocr import OcrPipeline
 from tracker.capture.screen import capture_region_pil
@@ -66,6 +67,13 @@ def main() -> None:
     """Démarre l'application pokemon-tcg-tracker."""
     setup_logging()
     logger.info("Démarrage de pokemon-tcg-tracker")
+
+    # Backup DB avant initialisation (silencieux si DB absente)
+    _data_dir = get_data_dir()
+    backup_db(
+        db_path=os.path.join(_data_dir, "tracker.db"),
+        data_dir=_data_dir,
+    )
 
     # Initialisation DB et API bridge
     db = DatabaseManager()
