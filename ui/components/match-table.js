@@ -5,6 +5,7 @@ var matchTable = {
     _filterResult: 'all',  // 'all' | 'W' | 'L' | 'D' | '?'
     _filterDeck:   '',     // '' ou String(deck_id)
     _filterSearch: '',     // '' ou texte recherché (adversaire)
+    _filterDate:   'all',  // 'all' | '7d' | '30d' | '90d'
 
     init: function () {
         // Données chargées par le bridge app.js (matches + decks en parallèle)
@@ -78,6 +79,12 @@ var matchTable = {
             '</select>' +
             '<input data-mt-filter-search type="search" placeholder="Chercher adversaire…"' +
             ' class="input input-sm input-bordered w-44">' +
+            '<select data-mt-filter-date class="select select-sm select-bordered">' +
+            '<option value="all">Toutes dates</option>' +
+            '<option value="7d">7 derniers jours</option>' +
+            '<option value="30d">30 derniers jours</option>' +
+            '<option value="90d">90 derniers jours</option>' +
+            '</select>' +
             '</div>' +
             '<div class="overflow-x-auto">' +
             '<table class="table table-sm w-full">' +
@@ -121,6 +128,15 @@ var matchTable = {
                 matchTable._render();
             });
         });
+        document.querySelectorAll('[data-mt-filter-date]').forEach(function (sel) {
+            sel.addEventListener('change', function () {
+                matchTable._filterDate = sel.value;
+                document.querySelectorAll('[data-mt-filter-date]').forEach(function (s) {
+                    s.value = sel.value;
+                });
+                matchTable._render();
+            });
+        });
     },
 
     // -------------------------------------------------------------------------
@@ -131,10 +147,16 @@ var matchTable = {
         matchTable._updateDeckFilters();
 
         var _search = matchTable._filterSearch;
+        var _dateCutoff = null;
+        var _dateDays = { '7d': 7, '30d': 30, '90d': 90 };
+        if (matchTable._filterDate !== 'all') {
+            _dateCutoff = Date.now() - (_dateDays[matchTable._filterDate] || 0) * 86400000;
+        }
         var filtered = matchTable._matches.filter(function (m) {
             if (matchTable._filterResult !== 'all' && m.result !== matchTable._filterResult) return false;
             if (matchTable._filterDeck !== '' && String(m.deck_id) !== matchTable._filterDeck) return false;
             if (_search && !(m.opponent || '').toLowerCase().includes(_search)) return false;
+            if (_dateCutoff && new Date(m.captured_at).getTime() < _dateCutoff) return false;
             return true;
         });
 
@@ -168,7 +190,13 @@ var matchTable = {
             matchTable._formatDate(m.captured_at) + '</td>' +
             '<td>' + matchTable._resultBadge(m.result) + '</td>' +
             '<td class="text-sm">' + matchTable._esc(deckName) + '</td>' +
-            '<td class="text-sm">' + matchTable._esc(m.opponent || '?') + '</td>' +
+            '<td class="text-sm">' +
+            '<button class="link link-hover text-sm text-left" data-opponent="' +
+            matchTable._esc(m.opponent || '?') + '"' +
+            ' onclick="matchTable._openMatchup(this.getAttribute(\'data-opponent\'))">' +
+            matchTable._esc(m.opponent || '?') + '</button>' +
+            (m.notes ? '<div class="text-xs opacity-50 italic mt-0.5">' + matchTable._esc(m.notes) + '</div>' : '') +
+            '</td>' +
             '<td class="text-sm">' + matchTable._esc(m.first_player || '?') + '</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-ghost btn-xs" ' +
@@ -198,6 +226,9 @@ var matchTable = {
             '<input data-edit-field="opponent" type="text" maxlength="100"' +
             ' value="' + matchTable._esc(m.opponent || '') + '"' +
             ' class="input input-xs input-bordered w-28">' +
+            '<input data-edit-field="notes" type="text" maxlength="500"' +
+            ' value="' + matchTable._esc(m.notes || '') + '"' +
+            ' placeholder="Notes…" class="input input-xs input-bordered w-28 mt-0.5">' +
             '</td>' +
             '<td>' +
             '<input data-edit-field="first_player" type="text" maxlength="50"' +
@@ -281,6 +312,12 @@ var matchTable = {
     // -------------------------------------------------------------------------
     // Erreur
     // -------------------------------------------------------------------------
+
+    _openMatchup: function (oppName) {
+        window.dispatchEvent(new CustomEvent('matchup-requested', {
+            detail: { opponent: oppName }
+        }));
+    },
 
     _renderError: function (msg) {
         document.querySelectorAll('[data-mt-tbody]').forEach(function (tbody) {

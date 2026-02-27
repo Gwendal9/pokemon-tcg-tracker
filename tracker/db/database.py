@@ -13,7 +13,11 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(get_data_dir(), "tracker.db")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+_MIGRATIONS = {
+    2: "ALTER TABLE matches ADD COLUMN notes TEXT",
+}
 
 _CREATE_DECKS = """
 CREATE TABLE IF NOT EXISTS decks (
@@ -32,7 +36,8 @@ CREATE TABLE IF NOT EXISTS matches (
     first_player TEXT,
     season       TEXT,
     captured_at  TEXT NOT NULL,
-    raw_ocr_data TEXT
+    raw_ocr_data TEXT,
+    notes        TEXT
 );
 """
 
@@ -75,6 +80,16 @@ class DatabaseManager:
                     "INSERT INTO schema_version (version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
+            else:
+                current = row["version"]
+                for v in sorted(_MIGRATIONS.keys()):
+                    if v > current:
+                        try:
+                            conn.execute(_MIGRATIONS[v])
+                            logger.info("Migration schema v%d appliquée", v)
+                        except Exception as mig_e:
+                            logger.warning("Migration v%d ignorée: %s", v, mig_e)
+                        conn.execute("UPDATE schema_version SET version = ?", (v,))
             conn.commit()
 
             version = conn.execute(

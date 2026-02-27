@@ -84,8 +84,9 @@ def test_init_idempotent_schema_version_not_duplicated(db):
 # AC3 — schema_version initialisé
 # ---------------------------------------------------------------------------
 
-def test_schema_version_is_1(models):
-    assert models.get_schema_version() == 1
+def test_schema_version_is_current(models):
+    from tracker.db.database import SCHEMA_VERSION
+    assert models.get_schema_version() == SCHEMA_VERSION
 
 
 # ---------------------------------------------------------------------------

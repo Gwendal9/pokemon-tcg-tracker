@@ -1,9 +1,10 @@
 // ui/components/detail-panel.js — Fréquence adversaires + panneau détail (Story 4.6)
 var detailPanel = {
-    _stats:         null,         // dernières stats reçues via stats-loaded
-    _matches:       [],           // derniers matchs reçus via matches-loaded
-    _activeTab:     'opponents',  // 'opponents' | 'decks'
-    _opponentSort:  'total',      // 'total' | 'winrate'
+    _stats:            null,         // dernières stats reçues via stats-loaded
+    _matches:          [],           // derniers matchs reçus via matches-loaded
+    _activeTab:        'opponents',  // 'opponents' | 'decks' | 'matchup'
+    _opponentSort:     'total',      // 'total' | 'winrate'
+    _matchupOpponent:  null,         // nom de l'adversaire affiché dans la vue matchup
 
     init: function () {
         // Mise en cache des données au fil des events existants (aucun appel API en plus)
@@ -22,6 +23,13 @@ var detailPanel = {
             var type = e.detail && e.detail.type;
             // "total" → onglet Decks ; winrate / record → onglet Adversaires
             detailPanel._activeTab = type === 'total' ? 'decks' : 'opponents';
+            detailPanel.open();
+        });
+
+        // Ouverture matchup depuis match-table (clic sur nom adversaire)
+        window.addEventListener('matchup-requested', function (e) {
+            detailPanel._matchupOpponent = e.detail && e.detail.opponent;
+            detailPanel._activeTab = 'matchup';
             detailPanel.open();
         });
 
@@ -56,15 +64,18 @@ var detailPanel = {
         var panel = document.getElementById('detail-panel');
         if (!panel) return;
 
-        var tabsHTML =
-            '<div class="flex gap-1 mb-4">' +
-            detailPanel._tabBtn('opponents', 'Adversaires') +
-            detailPanel._tabBtn('decks', 'Decks') +
-            '</div>';
+        var tabsHTML = detailPanel._activeTab === 'matchup'
+            ? ''
+            : ('<div class="flex gap-1 mb-4">' +
+               detailPanel._tabBtn('opponents', 'Adversaires') +
+               detailPanel._tabBtn('decks', 'Decks') +
+               '</div>');
 
-        var bodyHTML = detailPanel._activeTab === 'opponents'
-            ? detailPanel._opponentsHTML()
-            : detailPanel._decksHTML();
+        var bodyHTML = detailPanel._activeTab === 'matchup'
+            ? detailPanel._matchupHTML()
+            : (detailPanel._activeTab === 'opponents'
+                ? detailPanel._opponentsHTML()
+                : detailPanel._decksHTML());
 
         panel.innerHTML =
             '<div class="p-4">' +
@@ -222,6 +233,70 @@ var detailPanel = {
 
         html += '</tbody></table>';
         return html;
+    },
+
+    // -------------------------------------------------------------------------
+    // Vue Matchup (drill-down depuis un adversaire)
+    // -------------------------------------------------------------------------
+
+    _matchupHTML: function () {
+        var opp     = detailPanel._matchupOpponent || '?';
+        var matches = detailPanel._matches.filter(function (m) {
+            return (m.opponent || '?') === opp;
+        });
+
+        var wins   = matches.filter(function (m) { return m.result === 'W'; }).length;
+        var losses = matches.filter(function (m) { return m.result === 'L'; }).length;
+        var known  = wins + losses;
+        var wr     = known > 0 ? (wins / known * 100).toFixed(1) + '%' : '—';
+
+        var style     = getComputedStyle(document.documentElement);
+        var colorWin  = style.getPropertyValue('--color-win').trim();
+        var colorLoss = style.getPropertyValue('--color-loss').trim();
+        var wrColor   = known === 0 ? 'inherit' : (wins / known >= 0.5 ? colorWin : colorLoss);
+
+        var html =
+            '<button class="btn btn-ghost btn-xs mb-3"' +
+            ' onclick="detailPanel._switchTab(\'opponents\')">← Retour</button>' +
+            '<h3 class="font-semibold mb-3">' + detailPanel._esc(opp) + '</h3>' +
+            '<div class="grid grid-cols-4 gap-2 mb-4">' +
+            detailPanel._statChip('Total',     matches.length, 'inherit') +
+            detailPanel._statChip('Victoires', wins,           colorWin)  +
+            detailPanel._statChip('Défaites',  losses,         colorLoss) +
+            detailPanel._statChip('Winrate',   wr,             wrColor)   +
+            '</div>';
+
+        if (matches.length === 0) {
+            return html + '<p class="text-sm opacity-50 text-center py-4">Aucun match enregistré</p>';
+        }
+
+        html += '<h4 class="text-xs uppercase opacity-50 font-semibold mb-2">Historique</h4>' +
+                '<div class="flex flex-col gap-1">';
+
+        matches.forEach(function (m) {
+            var resColor = m.result === 'W' ? colorWin : m.result === 'L' ? colorLoss : 'inherit';
+            var date     = m.captured_at ? m.captured_at.slice(0, 10) : '—';
+            html +=
+                '<div class="flex items-center gap-2 text-sm py-1 border-b border-base-300">' +
+                '<span class="font-bold w-4" style="color:' + resColor + '">' +
+                detailPanel._esc(m.result || '?') + '</span>' +
+                '<span class="opacity-50 text-xs">' + date + '</span>' +
+                (m.notes
+                    ? '<span class="opacity-60 text-xs italic ml-auto truncate max-w-[140px]">' +
+                      detailPanel._esc(m.notes) + '</span>'
+                    : '') +
+                '</div>';
+        });
+
+        html += '</div>';
+        return html;
+    },
+
+    _statChip: function (label, value, color) {
+        return '<div class="bg-base-300 rounded-box p-2 text-center">' +
+            '<div class="text-xs opacity-50">' + label + '</div>' +
+            '<div class="font-bold" style="color:' + color + '">' + value + '</div>' +
+            '</div>';
     },
 
     // -------------------------------------------------------------------------

@@ -48,6 +48,8 @@ var matchForm = {
         var firstPlayer = document.getElementById('mf-first').value;
         var seasonEl    = document.getElementById('mf-season');
         var season      = seasonEl ? (seasonEl.value.trim() || null) : null;
+        var notesEl     = document.getElementById('mf-notes');
+        var notes       = notesEl ? (notesEl.value.trim() || null) : null;
 
         window.dispatchEvent(new CustomEvent('match-save-requested', {
             detail: {
@@ -55,7 +57,8 @@ var matchForm = {
                 deck_id:      deckVal ? parseInt(deckVal) : null,
                 opponent:     opponent,
                 first_player: firstPlayer,
-                season:       season
+                season:       season,
+                notes:        notes
             }
         }));
     },
@@ -65,11 +68,13 @@ var matchForm = {
         var o = document.getElementById('mf-opponent');
         var f = document.getElementById('mf-first');
         var s = document.getElementById('mf-season');
+        var n = document.getElementById('mf-notes');
         var e = document.getElementById('mf-error');
         if (r) r.value = 'W';
         if (o) o.value = '';
         if (f) f.value = '?';
         if (s) s.value = '';
+        if (n) n.value = '';
         if (e) { e.textContent = ''; e.style.display = 'none'; }
     }
 };
