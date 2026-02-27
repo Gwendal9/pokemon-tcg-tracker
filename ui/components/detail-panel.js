@@ -75,10 +75,11 @@ var detailPanel = {
         var isDrillDown = detailPanel._activeTab === 'matchup' || detailPanel._activeTab === 'deck-detail';
         var tabsHTML = isDrillDown
             ? ''
-            : ('<div class="flex gap-1 mb-4">' +
+            : ('<div class="flex gap-1 mb-4 flex-wrap">' +
                detailPanel._tabBtn('opponents', 'Adversaires') +
                detailPanel._tabBtn('decks', 'Decks') +
                detailPanel._tabBtn('first', 'Premier') +
+               detailPanel._tabBtn('monthly', 'Mensuel') +
                '</div>');
 
         var bodyHTML;
@@ -86,6 +87,7 @@ var detailPanel = {
         else if (detailPanel._activeTab === 'deck-detail') bodyHTML = detailPanel._deckDetailHTML();
         else if (detailPanel._activeTab === 'opponents')   bodyHTML = detailPanel._opponentsHTML();
         else if (detailPanel._activeTab === 'first')       bodyHTML = detailPanel._firstHTML();
+        else if (detailPanel._activeTab === 'monthly')     bodyHTML = detailPanel._monthlyHTML();
         else                                               bodyHTML = detailPanel._decksHTML();
 
         panel.innerHTML =
@@ -295,6 +297,66 @@ var detailPanel = {
             html +=
                 '<tr>' +
                 '<td class="text-sm font-medium">' + detailPanel._esc(r.label) + '</td>' +
+                '<td class="text-right text-sm">' + r.total + '</td>' +
+                '<td class="text-right text-sm">' + r.wins + '</td>' +
+                '<td class="text-right text-sm">' + r.losses + '</td>' +
+                '<td class="text-right text-sm font-bold" style="color:' + wrColor + '">' + wr + '</td>' +
+                '</tr>';
+        });
+
+        html += '</tbody></table>';
+        return html;
+    },
+
+    // -------------------------------------------------------------------------
+    // Onglet Mensuel
+    // -------------------------------------------------------------------------
+
+    _monthlyHTML: function () {
+        var map = {};
+        detailPanel._matches.forEach(function (m) {
+            var month = m.captured_at ? m.captured_at.slice(0, 7) : '?';
+            if (!map[month]) map[month] = { month: month, total: 0, wins: 0, losses: 0 };
+            map[month].total++;
+            if (m.result === 'W') map[month].wins++;
+            if (m.result === 'L') map[month].losses++;
+        });
+
+        var rows = Object.values(map).sort(function (a, b) {
+            return b.month.localeCompare(a.month);
+        });
+
+        if (rows.length === 0) {
+            return '<p class="text-sm opacity-50 text-center py-8">Aucun match enregistré</p>';
+        }
+
+        var style     = getComputedStyle(document.documentElement);
+        var colorWin  = style.getPropertyValue('--color-win').trim();
+        var colorLoss = style.getPropertyValue('--color-loss').trim();
+
+        var html =
+            '<table class="table table-xs w-full">' +
+            '<thead><tr>' +
+            '<th>Mois</th>' +
+            '<th class="text-right">Matchs</th>' +
+            '<th class="text-right">V</th>' +
+            '<th class="text-right">D</th>' +
+            '<th class="text-right">Winrate</th>' +
+            '</tr></thead><tbody>';
+
+        rows.forEach(function (r) {
+            var known   = r.wins + r.losses;
+            var wr      = known > 0 ? (r.wins / known * 100).toFixed(1) + '%' : '—';
+            var wrColor = known === 0 ? 'inherit' : (r.wins / known >= 0.5 ? colorWin : colorLoss);
+            // Formater YYYY-MM en "Mois YYYY"
+            var label = r.month;
+            try {
+                var d = new Date(r.month + '-01');
+                label = d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+            } catch (e) {}
+            html +=
+                '<tr>' +
+                '<td class="text-sm font-medium">' + detailPanel._esc(label) + '</td>' +
                 '<td class="text-right text-sm">' + r.total + '</td>' +
                 '<td class="text-right text-sm">' + r.wins + '</td>' +
                 '<td class="text-right text-sm">' + r.losses + '</td>' +

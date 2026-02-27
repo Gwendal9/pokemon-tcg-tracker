@@ -6,7 +6,7 @@ var matchTable = {
     _filterDeck:   '',     // '' ou String(deck_id)
     _filterSearch: '',     // '' ou texte recherché (adversaire)
     _filterDate:   'all',  // 'all' | '7d' | '30d' | '90d'
-    _filterTag:    '',     // '' ou tag sélectionné
+    _filterTags:   [],     // tags actifs (filtre OR multi-sélection)
     _page:         1,
     _pageSize:     20,
 
@@ -88,13 +88,11 @@ var matchTable = {
             '<option value="30d">30 derniers jours</option>' +
             '<option value="90d">90 derniers jours</option>' +
             '</select>' +
-            '<select data-mt-filter-tag class="select select-sm select-bordered">' +
-            '<option value="">Tous les tags</option>' +
-            '<option value="Tournoi">Tournoi</option>' +
-            '<option value="Ladder">Ladder</option>' +
-            '<option value="Casual">Casual</option>' +
-            '<option value="Test">Test</option>' +
-            '</select>' +
+            '<div class="flex gap-1 items-center flex-wrap">' +
+            ['Tournoi', 'Ladder', 'Casual', 'Test'].map(function (t) {
+                return '<button data-mt-tag-btn="' + t + '" class="btn btn-xs btn-ghost">' + t + '</button>';
+            }).join('') +
+            '</div>' +
             '</div>' +
             '<div class="overflow-x-auto">' +
             '<table class="table table-sm w-full">' +
@@ -143,11 +141,18 @@ var matchTable = {
                 matchTable._render();
             });
         });
-        document.querySelectorAll('[data-mt-filter-tag]').forEach(function (sel) {
-            sel.addEventListener('change', function () {
-                matchTable._filterTag = sel.value;
+        document.querySelectorAll('[data-mt-tag-btn]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var tag = btn.getAttribute('data-mt-tag-btn');
+                var idx = matchTable._filterTags.indexOf(tag);
+                if (idx >= 0) { matchTable._filterTags.splice(idx, 1); }
+                else          { matchTable._filterTags.push(tag); }
                 matchTable._page = 1;
-                document.querySelectorAll('[data-mt-filter-tag]').forEach(function (s) { s.value = sel.value; });
+                var active = matchTable._filterTags.includes(tag);
+                document.querySelectorAll('[data-mt-tag-btn="' + tag + '"]').forEach(function (b) {
+                    b.classList.toggle('btn-primary', active);
+                    b.classList.toggle('btn-ghost', !active);
+                });
                 matchTable._render();
             });
         });
@@ -161,7 +166,7 @@ var matchTable = {
         matchTable._updateDeckFilters();
 
         var _search     = matchTable._filterSearch;
-        var _tag        = matchTable._filterTag;
+        var _filterTags = matchTable._filterTags;
         var _dateCutoff = null;
         var _dateDays   = { '7d': 7, '30d': 30, '90d': 90 };
         if (matchTable._filterDate !== 'all') {
@@ -177,7 +182,10 @@ var matchTable = {
                     !_deckName.includes(_search)) return false;
             }
             if (_dateCutoff && new Date(m.captured_at).getTime() < _dateCutoff) return false;
-            if (_tag && !(m.tags || '').split(',').map(function(t){return t.trim();}).includes(_tag)) return false;
+            if (_filterTags.length > 0) {
+                var _mTags = (m.tags || '').split(',').map(function (t) { return t.trim(); });
+                if (!_filterTags.some(function (ft) { return _mTags.includes(ft); })) return false;
+            }
             return true;
         });
 
