@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Whitelist des champs modifiables via update_match_field.
 # Empêche toute injection SQL par nom de champ.
-ALLOWED_MATCH_FIELDS = {"result", "opponent", "first_player", "season", "notes"}
+ALLOWED_MATCH_FIELDS = {"result", "opponent", "first_player", "season", "notes", "tags"}
 
 
 class Models:
@@ -83,8 +83,8 @@ class Models:
         try:
             cursor = conn.execute(
                 """INSERT INTO matches
-                   (deck_id, result, opponent, first_player, season, captured_at, raw_ocr_data, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (deck_id, result, opponent, first_player, season, captured_at, raw_ocr_data, notes, tags)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     match_data.get("deck_id"),
                     match_data.get("result", "?"),
@@ -94,6 +94,7 @@ class Models:
                     match_data.get("captured_at", datetime.now().isoformat()),
                     match_data.get("raw_ocr_data"),
                     match_data.get("notes"),
+                    match_data.get("tags"),
                 ),
             )
             conn.commit()

@@ -6,6 +6,9 @@ var matchTable = {
     _filterDeck:   '',     // '' ou String(deck_id)
     _filterSearch: '',     // '' ou texte recherché (adversaire)
     _filterDate:   'all',  // 'all' | '7d' | '30d' | '90d'
+    _filterTag:    '',     // '' ou tag sélectionné
+    _page:         1,
+    _pageSize:     20,
 
     init: function () {
         // Données chargées par le bridge app.js (matches + decks en parallèle)
@@ -85,6 +88,13 @@ var matchTable = {
             '<option value="30d">30 derniers jours</option>' +
             '<option value="90d">90 derniers jours</option>' +
             '</select>' +
+            '<select data-mt-filter-tag class="select select-sm select-bordered">' +
+            '<option value="">Tous les tags</option>' +
+            '<option value="Tournoi">Tournoi</option>' +
+            '<option value="Ladder">Ladder</option>' +
+            '<option value="Casual">Casual</option>' +
+            '<option value="Test">Test</option>' +
+            '</select>' +
             '</div>' +
             '<div class="overflow-x-auto">' +
             '<table class="table table-sm w-full">' +
@@ -96,44 +106,48 @@ var matchTable = {
             '<tr><td colspan="6" class="text-center opacity-50 py-4">Chargement…</td></tr>' +
             '</tbody>' +
             '</table>' +
-            '</div>';
+            '</div>' +
+            '<div data-mt-pagination class="flex items-center justify-between mt-2 text-sm opacity-70"></div>';
     },
 
     _bindFilters: function () {
         document.querySelectorAll('[data-mt-filter-result]').forEach(function (sel) {
             sel.addEventListener('change', function () {
                 matchTable._filterResult = sel.value;
-                // synchroniser tous les filtres identiques (dashboard + historique)
-                document.querySelectorAll('[data-mt-filter-result]').forEach(function (s) {
-                    s.value = sel.value;
-                });
+                matchTable._page = 1;
+                document.querySelectorAll('[data-mt-filter-result]').forEach(function (s) { s.value = sel.value; });
                 matchTable._render();
             });
         });
         document.querySelectorAll('[data-mt-filter-deck]').forEach(function (sel) {
             sel.addEventListener('change', function () {
                 matchTable._filterDeck = sel.value;
-                document.querySelectorAll('[data-mt-filter-deck]').forEach(function (s) {
-                    s.value = sel.value;
-                });
+                matchTable._page = 1;
+                document.querySelectorAll('[data-mt-filter-deck]').forEach(function (s) { s.value = sel.value; });
                 matchTable._render();
             });
         });
         document.querySelectorAll('[data-mt-filter-search]').forEach(function (inp) {
             inp.addEventListener('input', function () {
                 matchTable._filterSearch = inp.value.trim().toLowerCase();
-                document.querySelectorAll('[data-mt-filter-search]').forEach(function (i) {
-                    i.value = inp.value;
-                });
+                matchTable._page = 1;
+                document.querySelectorAll('[data-mt-filter-search]').forEach(function (i) { i.value = inp.value; });
                 matchTable._render();
             });
         });
         document.querySelectorAll('[data-mt-filter-date]').forEach(function (sel) {
             sel.addEventListener('change', function () {
                 matchTable._filterDate = sel.value;
-                document.querySelectorAll('[data-mt-filter-date]').forEach(function (s) {
-                    s.value = sel.value;
-                });
+                matchTable._page = 1;
+                document.querySelectorAll('[data-mt-filter-date]').forEach(function (s) { s.value = sel.value; });
+                matchTable._render();
+            });
+        });
+        document.querySelectorAll('[data-mt-filter-tag]').forEach(function (sel) {
+            sel.addEventListener('change', function () {
+                matchTable._filterTag = sel.value;
+                matchTable._page = 1;
+                document.querySelectorAll('[data-mt-filter-tag]').forEach(function (s) { s.value = sel.value; });
                 matchTable._render();
             });
         });
@@ -146,9 +160,10 @@ var matchTable = {
     _render: function () {
         matchTable._updateDeckFilters();
 
-        var _search = matchTable._filterSearch;
+        var _search     = matchTable._filterSearch;
+        var _tag        = matchTable._filterTag;
         var _dateCutoff = null;
-        var _dateDays = { '7d': 7, '30d': 30, '90d': 90 };
+        var _dateDays   = { '7d': 7, '30d': 30, '90d': 90 };
         if (matchTable._filterDate !== 'all') {
             _dateCutoff = Date.now() - (_dateDays[matchTable._filterDate] || 0) * 86400000;
         }
@@ -157,15 +172,39 @@ var matchTable = {
             if (matchTable._filterDeck !== '' && String(m.deck_id) !== matchTable._filterDeck) return false;
             if (_search && !(m.opponent || '').toLowerCase().includes(_search)) return false;
             if (_dateCutoff && new Date(m.captured_at).getTime() < _dateCutoff) return false;
+            if (_tag && !(m.tags || '').split(',').map(function(t){return t.trim();}).includes(_tag)) return false;
             return true;
         });
 
-        var html = filtered.length === 0
+        // Pagination
+        var total     = filtered.length;
+        var pageSize  = matchTable._pageSize;
+        var page      = matchTable._page;
+        var totalPages = Math.max(1, Math.ceil(total / pageSize));
+        if (page > totalPages) { page = matchTable._page = totalPages; }
+        var start    = (page - 1) * pageSize;
+        var paginated = filtered.slice(start, start + pageSize);
+
+        var html = paginated.length === 0
             ? '<tr><td colspan="6" class="text-center opacity-50 py-6">Aucun match</td></tr>'
-            : filtered.map(matchTable._rowHTML).join('');
+            : paginated.map(matchTable._rowHTML).join('');
 
         document.querySelectorAll('[data-mt-tbody]').forEach(function (tbody) {
             tbody.innerHTML = html;
+        });
+
+        // Contrôles pagination
+        var paginHTML = total === 0 ? '' :
+            '<span>' + (start + 1) + '–' + Math.min(start + pageSize, total) + ' sur ' + total + '</span>' +
+            '<div class="flex gap-1 items-center">' +
+            '<button class="btn btn-xs btn-ghost" ' + (page <= 1 ? 'disabled' : '') +
+            ' onclick="matchTable._setPage(' + (page - 1) + ')">‹</button>' +
+            '<span>' + page + ' / ' + totalPages + '</span>' +
+            '<button class="btn btn-xs btn-ghost" ' + (page >= totalPages ? 'disabled' : '') +
+            ' onclick="matchTable._setPage(' + (page + 1) + ')">›</button>' +
+            '</div>';
+        document.querySelectorAll('[data-mt-pagination]').forEach(function (el) {
+            el.innerHTML = paginHTML;
         });
     },
 
@@ -189,7 +228,11 @@ var matchTable = {
             '<td class="text-xs opacity-60 whitespace-nowrap">' +
             matchTable._formatDate(m.captured_at) + '</td>' +
             '<td>' + matchTable._resultBadge(m.result) + '</td>' +
-            '<td class="text-sm">' + matchTable._esc(deckName) + '</td>' +
+            '<td class="text-sm">' + matchTable._esc(deckName) +
+            (m.tags ? '<div>' + m.tags.split(',').map(function (t) {
+                return '<span class="badge badge-xs badge-ghost mr-0.5">' + matchTable._esc(t.trim()) + '</span>';
+            }).join('') + '</div>' : '') +
+            '</td>' +
             '<td class="text-sm">' +
             '<button class="link link-hover text-sm text-left" data-opponent="' +
             matchTable._esc(m.opponent || '?') + '"' +
@@ -312,6 +355,11 @@ var matchTable = {
     // -------------------------------------------------------------------------
     // Erreur
     // -------------------------------------------------------------------------
+
+    _setPage: function (p) {
+        matchTable._page = p;
+        matchTable._render();
+    },
 
     _openMatchup: function (oppName) {
         window.dispatchEvent(new CustomEvent('matchup-requested', {

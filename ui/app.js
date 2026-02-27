@@ -51,6 +51,9 @@ window.addEventListener('pywebviewready', function () {
     if (typeof chartOpponents !== 'undefined') {
         chartOpponents.init();
     }
+    if (typeof seasonStats !== 'undefined') {
+        seasonStats.init();
+    }
 
     // Filtre saison — tous les selects [data-season-filter] sont synchronisés
     var _seasonSelects = document.querySelectorAll('[data-season-filter]');

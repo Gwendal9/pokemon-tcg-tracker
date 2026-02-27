@@ -1,6 +1,14 @@
 // ui/components/match-form.js — Saisie manuelle d'un match (modal DaisyUI)
 var matchForm = {
     init: function () {
+        // Tags toggle
+        document.querySelectorAll('#mf-tags .tag-toggle').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                btn.classList.toggle('btn-primary');
+                btn.classList.toggle('btn-outline');
+            });
+        });
+
         // Peupler le select decks à chaque ouverture
         window.addEventListener('decks-loaded', function (e) {
             matchForm._populateDecks((e.detail && e.detail.decks) ? e.detail.decks : []);
@@ -50,6 +58,10 @@ var matchForm = {
         var season      = seasonEl ? (seasonEl.value.trim() || null) : null;
         var notesEl     = document.getElementById('mf-notes');
         var notes       = notesEl ? (notesEl.value.trim() || null) : null;
+        var tagBtns     = document.querySelectorAll('#mf-tags .tag-toggle.btn-primary');
+        var tagsArr     = [];
+        tagBtns.forEach(function (b) { tagsArr.push(b.getAttribute('data-tag')); });
+        var tags        = tagsArr.length > 0 ? tagsArr.join(',') : null;
 
         window.dispatchEvent(new CustomEvent('match-save-requested', {
             detail: {
@@ -58,7 +70,8 @@ var matchForm = {
                 opponent:     opponent,
                 first_player: firstPlayer,
                 season:       season,
-                notes:        notes
+                notes:        notes,
+                tags:         tags
             }
         }));
     },
@@ -75,6 +88,10 @@ var matchForm = {
         if (f) f.value = '?';
         if (s) s.value = '';
         if (n) n.value = '';
+        document.querySelectorAll('#mf-tags .tag-toggle').forEach(function (b) {
+            b.classList.remove('btn-primary');
+            b.classList.add('btn-outline');
+        });
         if (e) { e.textContent = ''; e.style.display = 'none'; }
     }
 };

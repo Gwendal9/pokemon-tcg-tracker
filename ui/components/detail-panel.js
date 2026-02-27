@@ -1,10 +1,12 @@
 // ui/components/detail-panel.js — Fréquence adversaires + panneau détail (Story 4.6)
 var detailPanel = {
-    _stats:            null,         // dernières stats reçues via stats-loaded
-    _matches:          [],           // derniers matchs reçus via matches-loaded
-    _activeTab:        'opponents',  // 'opponents' | 'decks' | 'matchup'
-    _opponentSort:     'total',      // 'total' | 'winrate'
-    _matchupOpponent:  null,         // nom de l'adversaire affiché dans la vue matchup
+    _stats:            null,
+    _matches:          [],
+    _activeTab:        'opponents',  // 'opponents' | 'decks' | 'matchup' | 'deck-detail'
+    _opponentSort:     'total',
+    _matchupOpponent:  null,
+    _deckDetailId:     null,         // deck_id affiché dans la vue deck-detail
+    _deckChart:        null,         // instance Chart.js active dans le panneau
 
     init: function () {
         // Mise en cache des données au fil des events existants (aucun appel API en plus)
@@ -64,18 +66,25 @@ var detailPanel = {
         var panel = document.getElementById('detail-panel');
         if (!panel) return;
 
-        var tabsHTML = detailPanel._activeTab === 'matchup'
+        // Détruire le chart deck si on quitte la vue deck-detail
+        if (detailPanel._activeTab !== 'deck-detail' && detailPanel._deckChart) {
+            detailPanel._deckChart.destroy();
+            detailPanel._deckChart = null;
+        }
+
+        var isDrillDown = detailPanel._activeTab === 'matchup' || detailPanel._activeTab === 'deck-detail';
+        var tabsHTML = isDrillDown
             ? ''
             : ('<div class="flex gap-1 mb-4">' +
                detailPanel._tabBtn('opponents', 'Adversaires') +
                detailPanel._tabBtn('decks', 'Decks') +
                '</div>');
 
-        var bodyHTML = detailPanel._activeTab === 'matchup'
-            ? detailPanel._matchupHTML()
-            : (detailPanel._activeTab === 'opponents'
-                ? detailPanel._opponentsHTML()
-                : detailPanel._decksHTML());
+        var bodyHTML;
+        if (detailPanel._activeTab === 'matchup')      bodyHTML = detailPanel._matchupHTML();
+        else if (detailPanel._activeTab === 'deck-detail') bodyHTML = detailPanel._deckDetailHTML();
+        else if (detailPanel._activeTab === 'opponents')   bodyHTML = detailPanel._opponentsHTML();
+        else                                               bodyHTML = detailPanel._decksHTML();
 
         panel.innerHTML =
             '<div class="p-4">' +
@@ -222,7 +231,10 @@ var detailPanel = {
 
             html +=
                 '<tr>' +
-                '<td class="text-sm">' + detailPanel._esc(d.deck_name) + '</td>' +
+                '<td class="text-sm">' +
+                '<button class="link link-hover text-sm"' +
+                ' onclick="detailPanel._openDeckDetail(' + d.deck_id + ')">' +
+                detailPanel._esc(d.deck_name) + '</button></td>' +
                 '<td class="text-right text-sm">' + d.total + '</td>' +
                 '<td class="text-right text-sm">' + d.wins + '</td>' +
                 '<td class="text-right text-sm">' + d.losses + '</td>' +
@@ -233,6 +245,107 @@ var detailPanel = {
 
         html += '</tbody></table>';
         return html;
+    },
+
+    // -------------------------------------------------------------------------
+    // Vue Deck Détail (drill-down depuis un deck)
+    // -------------------------------------------------------------------------
+
+    _openDeckDetail: function (deckId) {
+        detailPanel._deckDetailId = deckId;
+        detailPanel._activeTab = 'deck-detail';
+        detailPanel._renderContent();
+    },
+
+    _deckDetailHTML: function () {
+        var deckId    = detailPanel._deckDetailId;
+        var deckStats = detailPanel._stats && detailPanel._stats.deck_stats
+            ? detailPanel._stats.deck_stats.find(function (d) { return d.deck_id === deckId; })
+            : null;
+        var deckName  = deckStats ? deckStats.deck_name : 'Deck #' + deckId;
+
+        var wins    = deckStats ? deckStats.wins    : 0;
+        var losses  = deckStats ? deckStats.losses  : 0;
+        var totalM  = deckStats ? deckStats.total   : 0;
+        var wr      = (wins + losses) > 0 ? deckStats.winrate.toFixed(1) + '%' : '—';
+
+        var style     = getComputedStyle(document.documentElement);
+        var colorWin  = style.getPropertyValue('--color-win').trim();
+        var colorLoss = style.getPropertyValue('--color-loss').trim();
+        var wrColor   = (wins + losses) === 0 ? 'inherit' : (deckStats.winrate >= 50 ? colorWin : colorLoss);
+
+        // Calcul tendance cumulative
+        var deckMatches = detailPanel._matches
+            .filter(function (m) { return m.deck_id === deckId && (m.result === 'W' || m.result === 'L'); })
+            .slice().sort(function (a, b) { return a.captured_at.localeCompare(b.captured_at); });
+
+        var trendLabels = [], trendValues = [], w = 0, tot = 0;
+        deckMatches.forEach(function (m) {
+            tot++;
+            if (m.result === 'W') w++;
+            trendLabels.push(m.captured_at.slice(0, 10));
+            trendValues.push(parseFloat((w / tot * 100).toFixed(1)));
+        });
+
+        var html =
+            '<button class="btn btn-ghost btn-xs mb-3"' +
+            ' onclick="detailPanel._switchTab(\'decks\')">← Retour</button>' +
+            '<h3 class="font-semibold mb-3">' + detailPanel._esc(deckName) + '</h3>' +
+            '<div class="grid grid-cols-4 gap-2 mb-4">' +
+            detailPanel._statChip('Total',     totalM, 'inherit') +
+            detailPanel._statChip('Victoires', wins,   colorWin)  +
+            detailPanel._statChip('Défaites',  losses, colorLoss) +
+            detailPanel._statChip('Winrate',   wr,     wrColor)   +
+            '</div>';
+
+        if (trendLabels.length >= 2) {
+            html += '<canvas id="detail-deck-chart" style="height:160px;"></canvas>';
+            // Initialiser Chart.js après injection dans le DOM
+            detailPanel._pendingTrend = { labels: trendLabels, values: trendValues };
+            setTimeout(function () { detailPanel._drawDeckChart(); }, 0);
+        } else {
+            html += '<p class="text-xs opacity-50">Pas assez de données (min. 2 matchs W/L)</p>';
+        }
+        return html;
+    },
+
+    _drawDeckChart: function () {
+        var data = detailPanel._pendingTrend;
+        if (!data || typeof Chart === 'undefined') return;
+        var ctx = document.getElementById('detail-deck-chart');
+        if (!ctx) return;
+        if (detailPanel._deckChart) { detailPanel._deckChart.destroy(); }
+        var style       = getComputedStyle(document.documentElement);
+        var colorAccent = style.getPropertyValue('--color-accent').trim() || '#6366f1';
+        detailPanel._deckChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data:            data.values,
+                    borderColor:     colorAccent,
+                    backgroundColor: colorAccent + '33',
+                    fill:            true,
+                    tension:         0.3,
+                    pointRadius:     data.labels.length > 30 ? 0 : 3,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    title:  { display: true, text: 'Winrate cumulatif (%)' }
+                },
+                scales: {
+                    x: { ticks: { maxTicksLimit: 5 } },
+                    y: {
+                        min: 0, max: 100,
+                        ticks: { callback: function (v) { return v + '%'; } }
+                    }
+                }
+            }
+        });
     },
 
     // -------------------------------------------------------------------------

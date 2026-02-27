@@ -139,6 +139,16 @@ def main() -> None:
                 window.evaluate_js(
                     "window.dispatchEvent(new CustomEvent('match-created',{detail:{auto:true}}))"
                 )
+                try:
+                    from plyer import notification
+                    notification.notify(
+                        title="Pokemon TCG Tracker",
+                        message="Match enregistré : " + str(saved.get("result", "?")),
+                        app_name="Pokemon TCG Tracker",
+                        timeout=4,
+                    )
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error("Enregistrement match échoué: %s", e)
 

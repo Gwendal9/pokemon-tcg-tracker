@@ -13,10 +13,11 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(get_data_dir(), "tracker.db")
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _MIGRATIONS = {
     2: "ALTER TABLE matches ADD COLUMN notes TEXT",
+    3: "ALTER TABLE matches ADD COLUMN tags TEXT",
 }
 
 _CREATE_DECKS = """
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS matches (
     season       TEXT,
     captured_at  TEXT NOT NULL,
     raw_ocr_data TEXT,
-    notes        TEXT
+    notes        TEXT,
+    tags         TEXT
 );
 """
 
