@@ -115,7 +115,7 @@ def test_save_config_persists_between_calls(api):
 def test_start_region_selection_saves_and_returns_region(api):
     region = {"x": 100, "y": 200, "width": 800, "height": 600}
     with patch("tracker.api.api.select_region_interactive", return_value=region):
-        result = asyncio.run(api.start_region_selection())
+        result = api.start_region_selection()
     assert result["ok"] is True
     assert result["region"] == region
     saved = asyncio.run(api.get_config())
@@ -124,5 +124,5 @@ def test_start_region_selection_saves_and_returns_region(api):
 
 def test_start_region_selection_cancelled_returns_error(api):
     with patch("tracker.api.api.select_region_interactive", return_value=None):
-        result = asyncio.run(api.start_region_selection())
+        result = api.start_region_selection()
     assert "error" in result

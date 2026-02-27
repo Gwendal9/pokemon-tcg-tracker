@@ -94,10 +94,10 @@ class TrackerAPI:
             logger.error("save_config: %s", e)
             return {"error": str(e)}
 
-    async def start_region_selection(self) -> dict:
+    def start_region_selection(self) -> dict:
         """Lance le sélecteur de région tkinter (overlay fullscreen).
 
-        Bloque jusqu'à sélection ou annulation (max 120s).
+        Méthode synchrone — bloque jusqu'à sélection ou annulation (max 120s).
         Sauvegarde la région dans config.json si sélection valide.
         Windows-only — mockable en tests.
         """
