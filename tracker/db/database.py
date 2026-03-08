@@ -13,11 +13,17 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(get_data_dir(), "tracker.db")
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 
 _MIGRATIONS = {
     2: "ALTER TABLE matches ADD COLUMN notes TEXT",
     3: "ALTER TABLE matches ADD COLUMN tags TEXT",
+    4: [
+        "ALTER TABLE matches ADD COLUMN turns_played INTEGER",
+        "ALTER TABLE matches ADD COLUMN player_points INTEGER",
+        "ALTER TABLE matches ADD COLUMN opponent_points INTEGER",
+    ],
+    5: "ALTER TABLE matches ADD COLUMN damage_dealt INTEGER",
 }
 
 _CREATE_DECKS = """
@@ -86,11 +92,15 @@ class DatabaseManager:
                 current = row["version"]
                 for v in sorted(_MIGRATIONS.keys()):
                     if v > current:
-                        try:
-                            conn.execute(_MIGRATIONS[v])
-                            logger.info("Migration schema v%d appliquée", v)
-                        except Exception as mig_e:
-                            logger.warning("Migration v%d ignorée: %s", v, mig_e)
+                        sqls = _MIGRATIONS[v]
+                        if isinstance(sqls, str):
+                            sqls = [sqls]
+                        for sql in sqls:
+                            try:
+                                conn.execute(sql)
+                                logger.info("Migration schema v%d appliquée: %s", v, sql)
+                            except Exception as mig_e:
+                                logger.warning("Migration v%d ignorée: %s", v, mig_e)
                         conn.execute("UPDATE schema_version SET version = ?", (v,))
             conn.commit()
 

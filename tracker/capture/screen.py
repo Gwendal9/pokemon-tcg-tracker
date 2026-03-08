@@ -1,5 +1,7 @@
 """tracker/capture/screen.py — Capture fenêtre MUMU + sélection de région.
 
+- auto_detect_mumu_region() : détecte automatiquement la zone client MuMu.
+- show_region_highlight()    : affiche un cadre rouge autour d'une région.
 - select_region_interactive() : overlay tkinter pour délimiter la région MUMU.
 - capture_region() : capture mss de la région configurée → base64 PNG.
 Windows-only. Imports mss/tkinter en lazy pour WSL/CI compatibility.
@@ -12,11 +14,138 @@ logger = logging.getLogger(__name__)
 def find_mumu_window() -> int | None:
     """Retourne le hwnd de la fenêtre MuMu Player ou None si non trouvée.
 
+    Cherche toutes les fenêtres visibles dont le titre contient "MuMu"
+    (insensible à la casse) pour couvrir MuMu Player, MuMu Player 12, etc.
     Windows-only — win32gui importé en lazy pour WSL/CI compatibility.
     """
     import win32gui  # noqa: PLC0415
-    hwnd = win32gui.FindWindow(None, "MuMu Player")
-    return hwnd if hwnd else None
+
+    found = []
+
+    _keywords = ("mumu", "pokemon", "pokémon")
+
+    def _enum_cb(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd).lower()
+            if any(kw in title for kw in _keywords):
+                found.append(hwnd)
+
+    win32gui.EnumWindows(_enum_cb, None)
+    return found[0] if found else None
+
+
+def auto_detect_mumu_region() -> dict | None:
+    """Détecte la zone de rendu Pokemon dans MuMu Player.
+
+    Stratégie :
+    1. Déclarer le process DPI-aware (coordonnées physiques cohérentes avec mss).
+    2. Trouver la fenêtre top-level MuMuPlayer.
+    3. Parmi ses fenêtres enfants, chercher d'abord celle dont le titre contient
+       "pokemon" ou "pokémon" (l'onglet du jeu dans MuMu).
+    4. Si introuvable par titre, prendre l'enfant avec la plus grande aire
+       qui est strictement plus petite que la fenêtre MuMu parente.
+    5. Retourner les coordonnées écran (GetWindowRect, plus fiable que ClientToScreen
+       pour les fenêtres enfants embarquées).
+
+    Returns:
+        {"x", "y", "width", "height"} ou None si non trouvé.
+    """
+    import ctypes    # noqa: PLC0415
+    import win32gui  # noqa: PLC0415
+
+    # Force DPI physique — indispensable pour cohérence avec mss
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+    def _window_rect(hwnd):
+        """Coordonnées écran absolues via GetWindowRect."""
+        try:
+            l, t, r, b = win32gui.GetWindowRect(hwnd)
+            w, h = r - l, b - t
+            if w < 50 or h < 50:
+                return None
+            return {"x": l, "y": t, "width": w, "height": h, "area": w * h}
+        except Exception:
+            return None
+
+    # find_mumu_window() cherche "mumu", "pokemon", "pokémon" — retourne le bon hwnd.
+    # On log tous les candidats pour comprendre ce qui est trouvé.
+    found = []
+
+    def _enum_cb(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        if win32gui.IsIconic(hwnd):
+            return
+        title = win32gui.GetWindowText(hwnd)
+        title_l = title.lower()
+        # Exclure la fenêtre du tracker lui-même
+        if "tracker" in title_l:
+            return
+        if any(kw in title_l for kw in ("mumu", "pokemon", "pokémon")):
+            r = _window_rect(hwnd)
+            if r:
+                found.append({"hwnd": hwnd, "title": title, **r})
+                logger.info("auto_detect candidat: hwnd=%d %r  %dx%d @ (%d,%d)",
+                            hwnd, title, r["width"], r["height"], r["x"], r["y"])
+
+    win32gui.EnumWindows(_enum_cb, None)
+
+    if not found:
+        logger.warning("auto_detect: aucune fenêtre MuMu/Pokemon trouvée")
+        return None
+
+    # Priorité 1 : fenêtre avec "pokemon" ou "pokémon" dans le titre (l'onglet du jeu)
+    pokemon_wins = [c for c in found if "pokemon" in c["title"].lower() or "pokémon" in c["title"].lower()]
+    if pokemon_wins:
+        best = max(pokemon_wins, key=lambda c: c["area"])
+        logger.info("auto_detect: fenêtre pokemon sélectionnée  %dx%d @ (%d,%d)",
+                    best["width"], best["height"], best["x"], best["y"])
+        return {"x": best["x"], "y": best["y"], "width": best["width"], "height": best["height"]}
+
+    # Priorité 2 : fenêtre MuMu (fallback)
+    best = max(found, key=lambda c: c["area"])
+    logger.info("auto_detect: fallback MuMu  %dx%d @ (%d,%d)",
+                best["width"], best["height"], best["x"], best["y"])
+    return {"x": best["x"], "y": best["y"], "width": best["width"], "height": best["height"]}
+
+
+def show_region_highlight(region: dict, duration: float = 2.5) -> None:
+    """Affiche un cadre rouge autour de la région pendant `duration` secondes.
+
+    Crée une fenêtre tkinter sans titre, transparente au centre, avec une
+    bordure rouge visible. Utile comme confirmation visuelle après détection.
+    """
+    import tkinter as tk  # noqa: PLC0415
+
+    x = region["x"]
+    y = region["y"]
+    w = region["width"]
+    h = region["height"]
+    border = 4
+
+    root = tk.Tk()
+    root.overrideredirect(True)
+    root.geometry(f"{w}x{h}+{x}+{y}")
+    root.attributes("-topmost", True)
+    root.attributes("-transparentcolor", "black")
+    root.configure(bg="black")
+
+    canvas = tk.Canvas(root, bg="black", highlightthickness=0)
+    canvas.pack(fill=tk.BOTH, expand=True)
+    # Contour rouge, intérieur noir (transparent via transparentcolor)
+    canvas.create_rectangle(
+        border, border, w - border, h - border,
+        outline="red", width=border * 2, fill="black",
+    )
+
+    root.after(int(duration * 1000), root.destroy)
+    root.mainloop()
 
 
 def select_region_interactive() -> dict | None:

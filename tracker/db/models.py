@@ -83,8 +83,9 @@ class Models:
         try:
             cursor = conn.execute(
                 """INSERT INTO matches
-                   (deck_id, result, opponent, first_player, season, captured_at, raw_ocr_data, notes, tags)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (deck_id, result, opponent, first_player, season, captured_at, raw_ocr_data,
+                    notes, tags, turns_played, player_points, opponent_points, damage_dealt)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     match_data.get("deck_id"),
                     match_data.get("result", "?"),
@@ -95,6 +96,10 @@ class Models:
                     match_data.get("raw_ocr_data"),
                     match_data.get("notes"),
                     match_data.get("tags"),
+                    match_data.get("turns_played"),
+                    match_data.get("player_points"),
+                    match_data.get("opponent_points"),
+                    match_data.get("damage_dealt"),
                 ),
             )
             conn.commit()

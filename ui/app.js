@@ -22,6 +22,9 @@ window.addEventListener('pywebviewready', function () {
     if (typeof configManager !== 'undefined') {
         configManager.init();
     }
+    if (typeof sampleManager !== 'undefined') {
+        sampleManager.init();
+    }
     if (typeof captureTest !== 'undefined') {
         captureTest.init();
     }
@@ -75,9 +78,8 @@ window.addEventListener('pywebviewready', function () {
     // Désactiver les boutons région-dépendants par défaut (activés par config-loaded)
     var _captureBtn = document.getElementById('capture-test-btn');
     if (_captureBtn) _captureBtn.disabled = true;
-    document.querySelectorAll('.btn-calibrate').forEach(function (b) { b.disabled = true; });
 
-    // Statut calibration
+    // Statut modèle ML
     window.dispatchEvent(new CustomEvent('calibration-status-requested'));
 });
 
@@ -91,6 +93,7 @@ function initTabs() {
         dashboard: document.getElementById('tab-dashboard'),
         history:   document.getElementById('tab-history'),
         decks:     document.getElementById('tab-decks'),
+        samples:   document.getElementById('tab-samples'),
         config:    document.getElementById('tab-config'),
     };
 
@@ -103,6 +106,7 @@ function initTabs() {
             });
             var target = sections[tab.dataset.tab];
             if (target) target.classList.remove('hidden');
+            window.dispatchEvent(new CustomEvent('tab-changed', { detail: tab.dataset.tab }));
         });
     });
 }
@@ -198,6 +202,20 @@ window.addEventListener('config-load-requested', async function () {
     }
 });
 
+window.addEventListener('config-region-auto-requested', async function () {
+    try {
+        const result = await window.pywebview.api.auto_detect_region();
+        if (result && result.error) {
+            window.dispatchEvent(new CustomEvent('config-error', { detail: { message: result.error } }));
+            return;
+        }
+        const config = await window.pywebview.api.get_config();
+        window.dispatchEvent(new CustomEvent('config-region-selected', { detail: { config } }));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
 window.addEventListener('config-region-select-requested', async function () {
     try {
         const result = await window.pywebview.api.start_region_selection();
@@ -205,7 +223,6 @@ window.addEventListener('config-region-select-requested', async function () {
             window.dispatchEvent(new CustomEvent('config-error', { detail: { message: result.error } }));
             return;
         }
-        // Recharger la config complète pour mettre à jour l'affichage
         const config = await window.pywebview.api.get_config();
         window.dispatchEvent(new CustomEvent('config-region-selected', { detail: { config } }));
     } catch (err) {
@@ -366,7 +383,6 @@ window.addEventListener('config-loaded', function (e) {
     var hasRegion = !!(e.detail && e.detail.config && e.detail.config.mumu_region);
     var captureBtn = document.getElementById('capture-test-btn');
     if (captureBtn) captureBtn.disabled = !hasRegion;
-    document.querySelectorAll('.btn-calibrate').forEach(function (b) { b.disabled = !hasRegion; });
     var hint = document.getElementById('region-required-hint');
     if (hint) hint.style.display = hasRegion ? 'none' : '';
 });
@@ -413,46 +429,47 @@ window.addEventListener('match-created', function (e) {
 });
 
 // ---------------------------------------------------------------------------
-// Calibration bridge (Item 3)
+// Statut modèle ML
 // ---------------------------------------------------------------------------
-
-function app_calibrate(stateName) {
-    window.dispatchEvent(new CustomEvent('calibrate-state-requested', { detail: { state: stateName } }));
-}
-
-window.addEventListener('calibrate-state-requested', async function (e) {
-    var calError   = document.getElementById('cal-error');
-    var calSuccess = document.getElementById('cal-success');
-    if (calError)   { calError.textContent = '';   calError.style.display   = 'none'; }
-    if (calSuccess) { calSuccess.textContent = ''; calSuccess.style.display = 'none'; }
-    try {
-        var result = await window.pywebview.api.calibrate_state(e.detail.state);
-        if (result && result.error) {
-            if (calError) { calError.textContent = result.error; calError.style.display = ''; }
-            return;
-        }
-        if (calSuccess) {
-            calSuccess.textContent = 'Calibration réussie : ' + e.detail.state.replace(/_/g, ' ');
-            calSuccess.style.display = '';
-        }
-        window.dispatchEvent(new CustomEvent('calibration-status-requested'));
-    } catch (err) {
-        if (calError) { calError.textContent = 'Erreur inattendue'; calError.style.display = ''; }
-    }
-});
 
 window.addEventListener('calibration-status-requested', async function () {
     try {
         var status = await window.pywebview.api.get_calibration_status();
-        ['pre_queue', 'in_combat', 'end_screen'].forEach(function (s) {
-            var el = document.getElementById('cal-status-' + s);
-            if (!el) return;
-            var calibrated = status && status[s];
-            el.textContent = calibrated ? '✓ Calibré' : '✗ Non calibré';
-            el.style.color  = calibrated ? 'var(--color-win)' : 'var(--color-loss)';
-        });
+        var el = document.getElementById('ml-model-status');
+        if (!el) return;
+        var available = status && status.model_available;
+        el.textContent = available ? '✓ Modèle chargé — détection active' : '✗ Modèle absent — lancez train_classifier.py';
+        el.style.color = available ? 'var(--color-win)' : 'var(--color-loss)';
     } catch (err) {}
 });
+
+// ---------------------------------------------------------------------------
+// Test OCR
+// ---------------------------------------------------------------------------
+
+var _btnTestOcr = document.getElementById('btn-test-ocr');
+if (_btnTestOcr) {
+    _btnTestOcr.addEventListener('click', async function () {
+        var resultEl = document.getElementById('ocr-test-result');
+        _btnTestOcr.disabled = true;
+        _btnTestOcr.textContent = 'Capture en cours...';
+        try {
+            var data = await window.pywebview.api.test_ocr_now();
+            if (resultEl) {
+                resultEl.classList.remove('hidden');
+                resultEl.textContent = JSON.stringify(data, null, 2);
+            }
+        } catch (err) {
+            if (resultEl) {
+                resultEl.classList.remove('hidden');
+                resultEl.textContent = 'Erreur: ' + err;
+            }
+        } finally {
+            _btnTestOcr.disabled = false;
+            _btnTestOcr.textContent = 'Tester OCR maintenant';
+        }
+    });
+}
 
 // ---------------------------------------------------------------------------
 // Export CSV bridge (Item 4)
@@ -495,6 +512,48 @@ window.addEventListener('active-season-save-requested', async function (e) {
             await window.pywebview.api.save_config(config);
         }
     } catch (err) {}
+});
+
+// ---------------------------------------------------------------------------
+// Indicateur de statut détection (poll toutes les 3s)
+// ---------------------------------------------------------------------------
+
+var _detectionStateLabels = {
+    'idle':       { label: 'En attente', color: '#6b7280' },
+    'pre_queue':  { label: 'Pré-queue', color: '#f59e0b' },
+    'in_combat':  { label: 'Combat', color: '#ef4444' },
+    'end_screen': { label: 'Fin de match', color: '#22c55e' },
+};
+
+function _updateDetectionStatus(status) {
+    var dot   = document.getElementById('detection-dot');
+    var label = document.getElementById('detection-label');
+    if (!dot || !label) return;
+
+    if (!status.mumu_detected) {
+        dot.style.backgroundColor = '#6b7280';
+        label.textContent = 'MUMU non détecté';
+        return;
+    }
+    var info = _detectionStateLabels[status.state] || { label: status.state, color: '#6b7280' };
+    dot.style.backgroundColor = info.color;
+    label.textContent = info.label;
+}
+
+function _pollDetectionStatus() {
+    if (!window.pywebview || !window.pywebview.api) return;
+    try {
+        var result = window.pywebview.api.get_capture_status();
+        if (result && result.then) {
+            result.then(function (s) { if (s && !s.error) _updateDetectionStatus(s); });
+        } else if (result && !result.error) {
+            _updateDetectionStatus(result);
+        }
+    } catch (e) {}
+}
+
+window.addEventListener('pywebviewready', function () {
+    setInterval(_pollDetectionStatus, 3000);
 });
 
 // ---------------------------------------------------------------------------

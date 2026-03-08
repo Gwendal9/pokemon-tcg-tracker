@@ -1,11 +1,12 @@
 """tracker/capture/ocr.py — Pipeline OCR EasyOCR pour l'extraction des données de combat.
 
 OcrPipeline :
-- extract_end_screen_data(img) → {result, opponent, first_player, captured_at, raw_ocr_data}
+- extract_end_screen_data(img) → {result, opponent, first_player, turns_played,
+                                   player_points, opponent_points, captured_at, raw_ocr_data}
 - extract_deck_from_prequeue(img, active_deck_id) → deck_id ou fallback
 
 Règles critiques :
-- Toujours retourner "?" pour les champs non reconnus — jamais None ni chaîne vide
+- Toujours retourner "?" pour les champs texte non reconnus — jamais None ni chaîne vide
 - EasyOCR initialisé une seule fois (singleton injecté depuis main.py)
 - Imports easyocr et numpy en lazy (lourds, Windows-only en pratique)
 """
@@ -15,135 +16,282 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Seuil de confiance minimal pour accepter un résultat OCR
 CONFIDENCE_THRESHOLD = 0.5
 
 
 class OcrPipeline:
-    """Pipeline EasyOCR pour extraire les données de match depuis des captures d'écran.
-
-    Usage :
-        ocr = OcrPipeline(reader=easyocr.Reader(['en'], gpu=False))
-        data = ocr.extract_end_screen_data(end_screen_img)
-        # data = {"result": "W", "opponent": "?", "first_player": "?", ...}
-    """
+    """Pipeline EasyOCR pour extraire les données de match depuis des captures d'écran."""
 
     def __init__(self, reader=None):
-        """
-        Args:
-            reader: Instance easyocr.Reader pré-initialisée (injectée depuis main.py).
-                    Si None, sera initialisée au premier appel via _ensure_reader().
-        """
         self._reader = reader
 
     def set_reader(self, reader) -> None:
-        """Injecte un reader EasyOCR (utilisé depuis main.py ou les tests)."""
         self._reader = reader
 
     # ------------------------------------------------------------------
     # Méthodes publiques
     # ------------------------------------------------------------------
 
+    # Zones de lecture (fractions de l'image)
+    # TOP    : bande haute — "Victoire !" / "Défaite..." / nom adversaire
+    # BOTTOM : tableau stats (gauche seulement pour éviter le texte de la carte)
+    _ZONE_TOP    = (0.0, 0.0,  1.0,  0.35)  # x0, y0, x1, y1
+    _ZONE_BOTTOM = (0.0, 0.67, 0.85, 0.95)  # écran de stats (après clic, pas de carte)
+
     def extract_end_screen_data(self, img) -> dict:
-        """Extrait les données de fin de combat depuis l'écran de résultat.
+        """Extrait les données de fin de combat depuis l'écran de résultat."""
+        w, h = img.size
 
-        Args:
-            img: PIL Image de la région configurée au moment de l'écran de fin.
+        def crop(zone):
+            return img.crop((int(zone[0]*w), int(zone[1]*h),
+                             int(zone[2]*w), int(zone[3]*h)))
 
-        Returns:
-            dict avec clés : result, opponent, first_player, captured_at, raw_ocr_data.
-            Tous les champs extraits ont une valeur (jamais None — "?" si incertain).
-        """
-        raw_results = []
+        top_img    = crop(self._ZONE_TOP)
+        bottom_img = crop(self._ZONE_BOTTOM)
+
+        # Upscale 2x le crop bottom pour améliorer la détection des petits textes
+        bottom_img_up = bottom_img.resize(
+            (bottom_img.width * 2, bottom_img.height * 2),
+        )
+
+        top_results = bottom_results = []
         try:
-            raw_results = self._read_text(img)
+            top_results    = self._read_text(top_img)
+            bottom_results = self._read_text(bottom_img_up)
         except Exception as e:
             logger.error("OCR read error: %s", e)
 
         raw_json = json.dumps(
-            [(text, float(conf)) for (_, text, conf) in raw_results],
+            [("TOP:" + text, float(conf)) for (_, text, conf) in top_results] +
+            [("BOT:" + text, float(conf)) for (_, text, conf) in bottom_results],
             ensure_ascii=False,
         )
 
+        # Tolérance doublée car coordonnées upscalées 2x
+        rows = self._group_into_rows(bottom_results, y_tolerance=30)
+        _upscale = 2
+        logger.info("OCR top: %s", [(t, round(c,2)) for (_, t, c) in top_results])
+        logger.info("OCR bottom rows: %s", [[(t, round(c,2)) for (_, t, c) in row] for row in rows])
+
         return {
-            "result": self._parse_result(raw_results),
-            "opponent": self._parse_opponent(raw_results),
-            "first_player": self._parse_first_player(raw_results),
-            "captured_at": datetime.now().isoformat(),
-            "raw_ocr_data": raw_json,
+            "result":          self._parse_result(top_results),
+            "opponent":        self._parse_opponent(top_results),
+            "first_player":    self._parse_first_player(rows),
+            "turns_played":    self._parse_turns(rows),
+            "player_points":   self._count_points_circles(rows, "vos points", bottom_img, _upscale),
+            "opponent_points": self._count_points_circles(rows, "points adversaire", bottom_img, _upscale),
+            "damage_dealt":    self._parse_number_after(rows, ["dégâts inflig", "degats inflig"]),
+            "captured_at":     datetime.now().isoformat(),
+            "raw_ocr_data":    raw_json,
         }
 
     def extract_deck_from_prequeue(self, img, active_deck_id=None) -> int | None:
-        """Extrait le deck joué depuis l'icône visible à l'écran pré-queue.
-
-        Fallback sur active_deck_id si l'identification OCR échoue.
-
-        Args:
-            img: PIL Image de la région pré-queue (peut être None si non capturé).
-            active_deck_id: deck_id configuré manuellement en fallback.
-
-        Returns:
-            deck_id (int) ou None si aucun deck identifiable.
-
-        TODO: Implémenter la détection visuelle de l'icône de deck une fois
-              les patterns Pokemon TCG Pocket calibrés sur Windows.
-        """
         logger.debug(
             "extract_deck_from_prequeue: fallback active_deck_id=%s", active_deck_id
         )
         return active_deck_id
 
     # ------------------------------------------------------------------
-    # Méthodes internes — EasyOCR
+    # EasyOCR
     # ------------------------------------------------------------------
 
     def _ensure_reader(self) -> None:
-        """Initialise le reader EasyOCR si pas encore fait (lazy — import lourd)."""
         if self._reader is None:
-            import easyocr  # noqa: PLC0415 — import lazy intentionnel (~200MB)
-            self._reader = easyocr.Reader(["en"], gpu=False)
-            logger.info("EasyOCR Reader initialisé")
+            import easyocr  # noqa: PLC0415
+            self._reader = easyocr.Reader(["fr", "en"], gpu=False)
+            logger.info("EasyOCR Reader initialisé (fr+en)")
 
     def _read_text(self, img) -> list:
-        """Lance EasyOCR sur l'image. Retourne [(bbox, text, confidence)]."""
-        import numpy as np  # noqa: PLC0415 — import lazy
+        import numpy as np  # noqa: PLC0415
         self._ensure_reader()
         return self._reader.readtext(np.array(img))
 
     # ------------------------------------------------------------------
-    # Méthodes internes — parsing des résultats OCR
+    # Groupement en lignes (par proximité Y)
+    # ------------------------------------------------------------------
+
+    def _group_into_rows(self, ocr_results, y_tolerance: int = 15) -> list[list]:
+        """Regroupe les éléments OCR par ligne (Y proche).
+
+        Retourne une liste de lignes, chaque ligne étant une liste d'éléments
+        (bbox, text, conf) triés par X croissant.
+        """
+        if not ocr_results:
+            return []
+
+        def center_y(item):
+            bbox = item[0]
+            return (bbox[0][1] + bbox[2][1]) / 2
+
+        def center_x(item):
+            bbox = item[0]
+            return (bbox[0][0] + bbox[2][0]) / 2
+
+        sorted_items = sorted(ocr_results, key=center_y)
+        rows = []
+        current_row = [sorted_items[0]]
+        current_y = center_y(sorted_items[0])
+
+        for item in sorted_items[1:]:
+            y = center_y(item)
+            if abs(y - current_y) <= y_tolerance:
+                current_row.append(item)
+            else:
+                rows.append(sorted(current_row, key=center_x))
+                current_row = [item]
+                current_y = y
+
+        if current_row:
+            rows.append(sorted(current_row, key=center_x))
+
+        return rows
+
+    def _find_value_in_row(self, rows, label_keywords: list[str],
+                           min_conf: float = CONFIDENCE_THRESHOLD) -> str | None:
+        """Cherche une ligne dont le premier élément (label) contient un keyword,
+        et retourne la concaténation des éléments suivants (valeur)."""
+        for row in rows:
+            if not row:
+                continue
+            label_text = row[0][1].lower().strip()
+            if any(kw in label_text for kw in label_keywords):
+                values = [item[1].strip() for item in row[1:] if item[2] >= min_conf]
+                if values:
+                    return " ".join(values)
+        return None
+
+    # ------------------------------------------------------------------
+    # Parsing des champs
     # ------------------------------------------------------------------
 
     def _parse_result(self, ocr_results) -> str:
-        """Extrait le résultat V/D depuis les textes OCR.
-
-        Cherche les textes "WIN" ou "LOSE" avec confiance ≥ CONFIDENCE_THRESHOLD.
-        Retourne "W", "L", ou "?" si non reconnu.
-
-        TODO: Calibrer avec les textes exacts de l'écran de fin de Pokemon TCG Pocket.
-        """
         for (_, text, conf) in ocr_results:
             if conf < CONFIDENCE_THRESHOLD:
                 continue
-            upper = text.upper().strip()
-            if upper in ("WIN", "WIN!", "YOU WIN", "YOU WIN!", "VICTORY"):
+            upper = text.upper().strip().rstrip("!.… -").strip()
+            if upper in ("WIN", "YOU WIN", "VICTORY", "VICTOIRE", "GAGNE", "GAGNÉ", "GAGNÉ !"):
                 return "W"
-            if upper in ("LOSE", "LOSE!", "YOU LOSE", "YOU LOSE!", "DEFEAT"):
+            if upper in ("LOSE", "YOU LOSE", "DEFEAT", "DEFAITE", "DÉFAITE", "PERDU", "PERDU !"):
                 return "L"
         return "?"
 
     def _parse_opponent(self, ocr_results) -> str:
-        """Extrait le nom de l'adversaire depuis les textes OCR.
+        """Extrait le nom de l'adversaire depuis 'contre [nom]'.
 
-        TODO: Calibrer selon la position du nom adversaire dans l'UI de fin de combat.
-              La position relative dans l'image est spécifique à Pokemon TCG Pocket.
+        Si OCR split le nom en plusieurs éléments, on concatène les suivants
+        (en s'arrêtant sur Victoire/Défaite/Gagné).
         """
+        _stop = {"victoire !", "victoire", "défaite...", "défaite", "gagné !", "gagné", "perdu !", "perdu"}
+        for i, (_, text, conf) in enumerate(ocr_results):
+            if conf < CONFIDENCE_THRESHOLD:
+                continue
+            lower = text.lower().strip()
+            if lower.startswith("contre "):
+                parts = [text[7:].strip()]
+                for (_, t2, c2) in ocr_results[i + 1:]:
+                    if t2.lower().strip() in _stop:
+                        break
+                    if c2 >= CONFIDENCE_THRESHOLD:
+                        parts.append(t2.strip())
+                return " ".join(p for p in parts if p) or "?"
         return "?"
 
-    def _parse_first_player(self, ocr_results) -> str:
-        """Extrait qui a commencé en premier (me/opponent) depuis les textes OCR.
-
-        TODO: Calibrer selon les indicateurs visuels "You go first" / "Opponent goes first"
-              dans l'UI de Pokemon TCG Pocket.
-        """
+    def _parse_first_player(self, rows) -> str:
+        """Détecte 'A joué en premier' ou 'A joué en deuxième'."""
+        val = self._find_value_in_row(rows, ["ordre d'action", "ordre d", "action"])
+        if val is None:
+            return "?"
+        lower = val.lower()
+        # "A joué en premier" = je joue en premier
+        if "premier" in lower or "first" in lower:
+            return "Moi"
+        # "A joué en deuxième" = l'adversaire a joué en premier
+        if "deuxi" in lower or "second" in lower:
+            return "Adversaire"
         return "?"
+
+    def _parse_turns(self, rows) -> int | None:
+        return self._parse_number_after(rows, ["tours jou", "tours"])
+
+    def _parse_number_after(self, rows, keywords: list[str]) -> int | None:
+        """Retourne le premier entier trouvé dans la valeur d'une ligne identifiée par keywords.
+        Seuil de confiance abaissé pour les valeurs numériques (OCR parfois peu confiant)."""
+        val = self._find_value_in_row(rows, keywords, min_conf=0.15)
+        if val is None:
+            return None
+        # Remplacer les confusions OCR courantes : o/O → 0, l/I → 1
+        normalized = val.replace("o", "0").replace("O", "0").replace("l", "1").replace("I", "1")
+        digits = "".join(c for c in normalized if c.isdigit())
+        return int(digits) if digits else None
+
+    def _count_points_circles(self, rows, label_kw: str,
+                               bottom_img=None, upscale: int = 1) -> int | None:
+        """Compte les cercles de points.
+
+        Stratégie 1 : lire les chiffres OCR dans la ligne (cercles bien lus).
+        Stratégie 2 (fallback) : détecter les cercles colorés par saturation
+                                  dans l'image originale (cercles illisibles par OCR).
+        """
+        target_row = None
+        for row in rows:
+            if row and label_kw in row[0][1].lower():
+                target_row = row
+                break
+        if target_row is None:
+            return None
+
+        # Stratégie 1 : valeur max des chiffres lus par OCR
+        # Le numéro sur le dernier cercle coloré = nombre de prizes pris (ex: "3" = 3 pts)
+        digit_vals = [int(item[1].strip()) for item in target_row[1:] if item[1].strip().isdigit()]
+        ocr_count = min(3, max(digit_vals)) if digit_vals else 0
+        logger.info("_count_points_circles [%s]: target_row=%s digit_vals=%s ocr_count=%s",
+                    label_kw, [(it[1], it[2]) for it in target_row], digit_vals, ocr_count)
+
+        # Stratégie 2 : détection couleur dans l'image originale (plus fiable)
+        if bottom_img is None:
+            return ocr_count  # pas d'image → on fait confiance à l'OCR
+
+        try:
+            import numpy as np  # noqa: PLC0415
+
+            # Coordonnées de la ligne dans l'image originale (corriger upscale)
+            bbox = target_row[0][0]
+            row_y = ((bbox[0][1] + bbox[2][1]) / 2) / upscale
+            row_h = max(abs(bbox[2][1] - bbox[0][1]) / upscale, 20)
+
+            w, h = bottom_img.size
+            y0 = max(0, int(row_y - row_h * 0.9))
+            y1 = min(h, int(row_y + row_h * 0.9))
+            x0 = w // 3  # ignorer la zone label
+            strip = bottom_img.crop((x0, y0, w, y1)).convert("RGB")
+
+            arr = np.asarray(strip, dtype=float)
+            r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+            cmax = np.maximum(np.maximum(r, g), b)
+            cmin = np.minimum(np.minimum(r, g), b)
+            sat = np.where(cmax > 30, (cmax - cmin) / (cmax + 1e-6), 0.0)
+            colored_cols = (sat > 0.30).any(axis=0)
+
+            n = 0
+            in_c = False
+            gap = 0
+            for c in colored_cols:
+                if c:
+                    if not in_c:
+                        n += 1
+                        in_c = True
+                    gap = 0
+                else:
+                    if in_c:
+                        gap += 1
+                        if gap > 4:
+                            in_c = False
+
+            logger.info("_count_points_circles [%s]: sat_n=%s → result=%s",
+                        label_kw, n, max(ocr_count, min(3, n)))
+            # Prendre le max : OCR peut sous-estimer, saturation peut sur-estimer
+            return max(ocr_count, min(3, n))
+
+        except Exception as e:
+            logger.debug("_count_points_circles saturation: %s", e)
+            return ocr_count

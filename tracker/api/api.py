@@ -1,7 +1,8 @@
 """tracker/api/api.py — Bridge pywebview.
 
-Toutes les méthodes doivent être `async def` (requis par pywebview 6.x).
-Elles sont exposées au JS via `window.pywebview.api.<methode>()`.
+Toutes les méthodes sont des `def` synchrones.
+pywebview 6.1 exécute les appels API dans un thread dédié — pas besoin d'async.
+Les coroutines async causaient un RuntimeWarning "coroutine never awaited".
 
 Règles critiques :
 - Retourner {"error": "message"} en cas d'erreur (jamais lever d'exception non catchée)
@@ -15,14 +16,17 @@ import threading
 from tracker.db.database import DatabaseManager
 from tracker.db.models import Models
 from tracker.config import ConfigManager
-from tracker.capture.screen import capture_region, capture_region_pil, select_region_interactive
+from tracker.capture.screen import (
+    capture_region, capture_region_pil,
+    select_region_interactive, auto_detect_mumu_region, show_region_highlight,
+)
 from tracker.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
 
 class TrackerAPI:
-    """Bridge pywebview — toutes les méthodes sont async def."""
+    """Bridge pywebview — toutes les méthodes sont synchrones (def)."""
 
     def __init__(self, db: DatabaseManager):
         self._db = db
@@ -33,14 +37,10 @@ class TrackerAPI:
         logger.info("TrackerAPI initialisée")
 
     # -------------------------------------------------------------------------
-    # Capture status (stub — complété en Story 3.1)
-    # -------------------------------------------------------------------------
-
-    # -------------------------------------------------------------------------
     # Deck CRUD (Story 2.1)
     # -------------------------------------------------------------------------
 
-    async def get_decks(self) -> list:
+    def get_decks(self) -> list:
         """Retourne la liste de tous les decks."""
         try:
             return self._models.get_decks()
@@ -48,7 +48,7 @@ class TrackerAPI:
             logger.error("get_decks: %s", e)
             return {"error": str(e)}
 
-    async def create_deck(self, name: str) -> dict:
+    def create_deck(self, name: str) -> dict:
         """Crée un deck. Retourne {"error": ...} si le nom est vide."""
         if not name or not name.strip():
             return {"error": "Le nom du deck ne peut pas être vide"}
@@ -58,7 +58,7 @@ class TrackerAPI:
             logger.error("create_deck: %s", e)
             return {"error": str(e)}
 
-    async def update_deck(self, deck_id: int, name: str) -> bool:
+    def update_deck(self, deck_id: int, name: str) -> bool:
         """Met à jour le nom d'un deck. Retourne True si succès."""
         try:
             return self._models.update_deck(deck_id, name.strip())
@@ -66,7 +66,7 @@ class TrackerAPI:
             logger.error("update_deck: %s", e)
             return {"error": str(e)}
 
-    async def delete_deck(self, deck_id: int) -> bool:
+    def delete_deck(self, deck_id: int) -> bool:
         """Supprime un deck. Retourne True si succès, False si inexistant."""
         try:
             return self._models.delete_deck(deck_id)
@@ -78,7 +78,7 @@ class TrackerAPI:
     # Config (Story 2.2)
     # -------------------------------------------------------------------------
 
-    async def get_config(self) -> dict:
+    def get_config(self) -> dict:
         """Retourne la configuration complète (config.json + defaults)."""
         try:
             return self._config.get_all()
@@ -86,7 +86,7 @@ class TrackerAPI:
             logger.error("get_config: %s", e)
             return {"error": str(e)}
 
-    async def save_config(self, config: dict) -> bool:
+    def save_config(self, config: dict) -> bool:
         """Sauvegarde la configuration dans config.json."""
         try:
             return self._config.save(config)
@@ -94,10 +94,31 @@ class TrackerAPI:
             logger.error("save_config: %s", e)
             return {"error": str(e)}
 
+    def auto_detect_region(self) -> dict:
+        """Détecte automatiquement la zone client MuMu et affiche un cadre rouge de confirmation.
+
+        Utilise win32gui pour lire le rect client exact (sans barre de titre Windows).
+        Le cadre rouge s'affiche 2,5 s dans un thread daemon pour ne pas bloquer.
+        """
+        try:
+            region = auto_detect_mumu_region()
+            if region is None:
+                return {"error": "Fenêtre MuMu introuvable. Ouvrez MuMu Player et réessayez."}
+            config = self._config.get_all()
+            config["mumu_region"] = region
+            self._config.save(config)
+            import threading  # noqa: PLC0415
+            threading.Thread(target=show_region_highlight, args=(region,), daemon=True).start()
+            return {"ok": True, "region": region}
+        except Exception as e:
+            logger.error("auto_detect_region: %s", e)
+            return {"error": str(e)}
+
     def start_region_selection(self) -> dict:
         """Lance le sélecteur de région tkinter (overlay fullscreen).
 
         Méthode synchrone — bloque jusqu'à sélection ou annulation (max 120s).
+        tkinter tourne dans un thread séparé pour ne pas conflictuer avec pywebview.
         Sauvegarde la région dans config.json si sélection valide.
         Windows-only — mockable en tests.
         """
@@ -119,23 +140,16 @@ class TrackerAPI:
     # Stats (Epic 4 — Story 4.1)
     # -------------------------------------------------------------------------
 
-    async def get_stats(self, season: str = None) -> dict:
-        """Retourne les statistiques agrégées (winrate global + par deck).
-
-        Retourne {"error": ...} en cas d'erreur.
-        """
+    def get_stats(self, season: str = None) -> dict:
+        """Retourne les statistiques agrégées (winrate global + par deck)."""
         try:
             return self._models.get_stats(season=season)
         except Exception as e:
             logger.error("get_stats: %s", e)
             return {"error": str(e)}
 
-    async def update_match_field(self, match_id: int, field: str, value: str) -> bool:
-        """Modifie un champ d'un match existant. Protégé par _db_lock.
-
-        field doit être dans ALLOWED_MATCH_FIELDS (whitelist dans models.py).
-        Retourne True si succès, False si champ non autorisé ou match introuvable.
-        """
+    def update_match_field(self, match_id: int, field: str, value: str) -> bool:
+        """Modifie un champ d'un match existant. Protégé par _db_lock."""
         try:
             with self._db_lock:
                 return self._models.update_match_field(match_id, field, value)
@@ -147,7 +161,7 @@ class TrackerAPI:
     # Matches (Story 3.4)
     # -------------------------------------------------------------------------
 
-    async def delete_match(self, match_id: int) -> bool:
+    def delete_match(self, match_id: int) -> bool:
         """Supprime un match. Retourne True si succès, False si inexistant."""
         try:
             with self._db_lock:
@@ -156,11 +170,8 @@ class TrackerAPI:
             logger.error("delete_match: %s", e)
             return {"error": str(e)}
 
-    async def save_match(self, match_data: dict) -> dict:
-        """Enregistre un match capturé en DB. Protégé par _db_lock.
-
-        Retourne le dict du match sauvegardé ou {"error": ...}.
-        """
+    def save_match(self, match_data: dict) -> dict:
+        """Enregistre un match capturé en DB. Protégé par _db_lock."""
         try:
             with self._db_lock:
                 return self._models.save_match(match_data)
@@ -168,7 +179,7 @@ class TrackerAPI:
             logger.error("save_match: %s", e)
             return {"error": str(e)}
 
-    async def get_seasons(self) -> list:
+    def get_seasons(self) -> list:
         """Retourne les saisons distinctes (non nulles) présentes dans la DB."""
         try:
             return self._models.get_seasons()
@@ -176,7 +187,7 @@ class TrackerAPI:
             logger.error("get_seasons: %s", e)
             return {"error": str(e)}
 
-    async def get_matches(self, season: str = None, deck_id: int = None) -> list:
+    def get_matches(self, season: str = None, deck_id: int = None) -> list:
         """Retourne l'historique des matchs."""
         try:
             return self._models.get_matches(season=season, deck_id=deck_id)
@@ -185,18 +196,15 @@ class TrackerAPI:
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------
-    # Capture status (stub — complété en Story 3.1)
+    # Capture status
     # -------------------------------------------------------------------------
 
     def set_polling(self, polling) -> None:
         """Injecte la référence au PollingLoop depuis main.py (Story 3.1)."""
         self._polling = polling
 
-    async def capture_test_frame(self) -> dict:
-        """Capture un frame de la région configurée pour test visuel.
-
-        Retourne {"image_b64", "width", "height"} ou {"error": ...}.
-        """
+    def capture_test_frame(self) -> dict:
+        """Capture un frame de la région configurée pour test visuel."""
         config = self._config.get_all()
         region = config.get("mumu_region")
         if not region:
@@ -206,11 +214,8 @@ class TrackerAPI:
             return {"error": "Capture de la région échouée."}
         return frame
 
-    async def get_capture_status(self) -> dict:
-        """Retourne l'état courant du pipeline de capture.
-
-        Utilise le PollingLoop si injecté (Story 3.1+), sinon fallback win32gui direct.
-        """
+    def get_capture_status(self) -> dict:
+        """Retourne l'état courant du pipeline de capture."""
         config = self._config.get_all()
         region = config.get("mumu_region")
 
@@ -221,10 +226,9 @@ class TrackerAPI:
                 "region_configured": region is not None,
             }
 
-        # Fallback sans PollingLoop (tests sans injection, etc.)
         mumu_detected = False
         try:
-            import win32gui  # noqa: PLC0415 — Windows-only, mocké en tests
+            import win32gui  # noqa: PLC0415
             hwnd = win32gui.FindWindow(None, "MuMu Player")
             mumu_detected = bool(hwnd)
         except Exception:
@@ -237,53 +241,143 @@ class TrackerAPI:
         }
 
     # -------------------------------------------------------------------------
-    # Calibration StateDetector (Story 3.2)
+    # Statut du modèle ML
     # -------------------------------------------------------------------------
 
-    async def get_calibration_status(self) -> dict:
-        """Retourne l'état de calibration pour chaque état de détection."""
+    def get_calibration_status(self) -> dict:
+        """Retourne le statut du modèle ML de détection d'état."""
         try:
             if self._polling is None or self._polling._detector is None:
-                return {"pre_queue": False, "in_combat": False, "end_screen": False}
+                return {"model_available": False}
             d = self._polling._detector
-            return {
-                "pre_queue":  d.is_calibrated("pre_queue"),
-                "in_combat":  d.is_calibrated("in_combat"),
-                "end_screen": d.is_calibrated("end_screen"),
-            }
+            return {"model_available": d.is_model_available()}
         except Exception as e:
             logger.error("get_calibration_status: %s", e)
             return {"error": str(e)}
 
-    async def calibrate_state(self, state_name: str) -> dict:
-        """Capture le frame MUMU actuel et l'enregistre comme référence pour state_name.
+    # -------------------------------------------------------------------------
+    # Test OCR — capture immédiate et retour des données extraites
+    # -------------------------------------------------------------------------
 
-        state_name : 'pre_queue', 'in_combat' ou 'end_screen'.
-        Retourne {"ok": True} ou {"error": "..."}.
-        """
+    def test_ocr_now(self) -> dict:
+        """Capture l'écran MuMu actuel et retourne les données OCR extraites."""
         try:
-            config = self._config.get_all()
-            region = config.get("mumu_region")
+            from tracker.capture.ocr import OcrPipeline  # noqa: PLC0415
+            import os as _os
+            region = self._config.get_all().get("mumu_region")
             if not region:
-                return {"error": "Aucune région configurée. Configurez d'abord la région MUMU."}
-            if self._polling is None or self._polling._detector is None:
-                return {"error": "Détecteur non initialisé."}
+                return {"error": "Région MuMu non configurée"}
             img = capture_region_pil(region)
             if img is None:
-                return {"error": "Capture échouée. Vérifiez que MUMU Player est visible."}
-            ok = self._polling._detector.calibrate(state_name, img)
-            if not ok:
-                return {"error": f"État '{state_name}' invalide."}
-            return {"ok": True, "state": state_name}
+                return {"error": "Capture échouée"}
+            # Sauvegarder les crops pour diagnostic
+            data_dir = get_data_dir()
+            img.save(_os.path.join(data_dir, "debug_full.png"))
+            w, h = img.size
+            top_crop = img.crop((0, 0, w, int(0.35 * h)))
+            bot_crop = img.crop((0, int(0.67 * h), int(0.85 * w), int(0.95 * h)))
+            top_crop.save(_os.path.join(data_dir, "debug_crop_top.png"))
+            bot_crop.save(_os.path.join(data_dir, "debug_crop_bot.png"))
+            logger.info("Crops sauvegardés dans %s", data_dir)
+            ocr = OcrPipeline()
+            data = ocr.extract_end_screen_data(img)
+            logger.info("test_ocr_now: %s", data)
+            return data
         except Exception as e:
-            logger.error("calibrate_state: %s", e)
+            logger.error("test_ocr_now: %s", e)
+            return {"error": str(e)}
+
+    # -------------------------------------------------------------------------
+    # Sampling — capture automatique pour dataset de labélisation
+    # -------------------------------------------------------------------------
+
+    def start_sampling(self) -> dict:
+        """Démarre la boucle de capture automatique sur changement visuel."""
+        try:
+            from tracker.capture.sampler import SamplingLoop  # noqa: PLC0415
+            if getattr(self, "_sampler", None) and self._sampler.is_running:
+                return {"error": "Sampling déjà en cours."}
+            region = self._config.get_all().get("mumu_region")
+            if not region:
+                return {"error": "Aucune région configurée."}
+            self._sampler = SamplingLoop(config=self._config)
+            t = threading.Thread(target=self._sampler.start, daemon=True)
+            t.start()
+            return {"ok": True}
+        except Exception as e:
+            logger.error("start_sampling: %s", e)
+            return {"error": str(e)}
+
+    def stop_sampling(self) -> dict:
+        """Arrête la boucle de capture automatique."""
+        try:
+            sampler = getattr(self, "_sampler", None)
+            if sampler is None or not sampler.is_running:
+                return {"error": "Sampling non démarré."}
+            sampler.stop()
+            return {"ok": True, "saved": sampler.saved_count}
+        except Exception as e:
+            logger.error("stop_sampling: %s", e)
+            return {"error": str(e)}
+
+    def get_sampling_status(self) -> dict:
+        """Retourne l'état du sampler et le nombre de captures sauvegardées."""
+        try:
+            from tracker.capture.sampler import list_unlabeled  # noqa: PLC0415
+            sampler = getattr(self, "_sampler", None)
+            running = sampler is not None and sampler.is_running
+            saved = sampler.saved_count if sampler else 0
+            unlabeled = list_unlabeled()
+            return {
+                "running": running,
+                "saved_this_session": saved,
+                "unlabeled_count": len(unlabeled),
+            }
+        except Exception as e:
+            logger.error("get_sampling_status: %s", e)
+            return {"error": str(e)}
+
+    def get_unlabeled_samples(self) -> list:
+        """Retourne la liste des captures non labélisées avec leur label auto-détecté."""
+        try:
+            import base64, io  # noqa: PLC0415, E401
+            from tracker.capture.sampler import list_unlabeled  # noqa: PLC0415
+            samples = list_unlabeled()
+            result = []
+            for s in samples:
+                try:
+                    img = __import__("PIL.Image", fromlist=["Image"]).open(s["path"])
+                    img.thumbnail((320, 240))
+                    buf = io.BytesIO()
+                    img.save(buf, format="JPEG", quality=75)
+                    b64 = base64.b64encode(buf.getvalue()).decode()
+                    result.append({
+                        "filename": s["filename"],
+                        "auto_label": s["auto_label"],
+                        "thumbnail": b64,
+                    })
+                except Exception:
+                    pass
+            return result
+        except Exception as e:
+            logger.error("get_unlabeled_samples: %s", e)
+            return {"error": str(e)}
+
+    def label_sample(self, filename: str, label: str) -> dict:
+        """Labélise une capture et la déplace dans le bon dossier."""
+        try:
+            from tracker.capture.sampler import label_sample  # noqa: PLC0415
+            ok = label_sample(filename, label)
+            return {"ok": ok}
+        except Exception as e:
+            logger.error("label_sample: %s", e)
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------
     # Export CSV
     # -------------------------------------------------------------------------
 
-    async def open_external_url(self, url: str) -> dict:
+    def open_external_url(self, url: str) -> dict:
         """Ouvre une URL dans le navigateur par défaut."""
         import webbrowser
         try:
@@ -293,11 +387,8 @@ class TrackerAPI:
             logger.error("open_external_url: %s", e)
             return {"error": str(e)}
 
-    async def export_matches_csv(self) -> dict:
-        """Exporte tous les matchs en CSV dans data/matches_export.csv et l'ouvre.
-
-        Retourne {"ok": True, "path": ...} ou {"error": "..."}.
-        """
+    def export_matches_csv(self) -> dict:
+        """Exporte tous les matchs en CSV dans data/matches_export.csv et l'ouvre."""
         import csv
         import os as _os
         try:

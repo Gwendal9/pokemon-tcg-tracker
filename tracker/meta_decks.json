@@ -1,0 +1,146 @@
+[
+  {
+    "id": "suicune-baxcalibur",
+    "name": "Suicune ex / Baxcalibur",
+    "archetype": "Water Snipe Engine",
+    "tier": "S",
+    "energy_types": ["Eau"],
+    "key_cards": ["Suicune ex", "Chien-Pao ex", "Baxcalibur", "Frigibax", "Arctibax"],
+    "strategy": "Baxcalibur attache de l'énergie Eau supplémentaire chaque tour. Chien-Pao ex snipe n'importe quel Pokémon pour 130 dégâts."
+  },
+  {
+    "id": "mega-altaria-greninja",
+    "name": "Méga Altaria ex / Amphinobi",
+    "archetype": "Psy Spread Control",
+    "tier": "S",
+    "energy_types": ["Psy", "Eau"],
+    "key_cards": ["Méga Altaria ex", "Tylwing", "Amphinobi", "Grenousse", "Croâporal", "Jirachi", "Cyrus"],
+    "strategy": "Amphinobi snipe les Pokémon sur le banc. Méga Altaria ex ferme les parties avec Méga Harmonie. Cyrus sort les cibles du banc."
+  },
+  {
+    "id": "bellibolt-zeraora",
+    "name": "Bellibolt ex / Zeraora",
+    "archetype": "Électrik Aggro",
+    "tier": "S",
+    "energy_types": ["Électrik"],
+    "key_cards": ["Bellibolt ex", "Tadbulb", "Zeraora", "Pichu", "Générateur Électrique"],
+    "strategy": "Zeraora et Pichu accélèrent l'énergie Électrik. Bellibolt ex inflige 140 dégâts avec Canon Haute-Tension une fois 4+ énergies en jeu."
+  },
+  {
+    "id": "magnezone-bellibolt",
+    "name": "Magnezone / Bellibolt ex",
+    "archetype": "Électrik Ramp",
+    "tier": "S",
+    "energy_types": ["Électrik"],
+    "key_cards": ["Magnezone", "Magnéton", "Magnéti", "Bellibolt ex", "Tadbulb", "Générateur Électrique"],
+    "strategy": "Magnéton s'auto-charge avec Volt Charge. Magnezone accélère l'énergie. Bellibolt ex attaque pour 140 une fois chargé."
+  },
+  {
+    "id": "hydreigon-mega-absol",
+    "name": "Trioxhydre / Méga Absol ex",
+    "archetype": "Obscurité Disruption",
+    "tier": "S",
+    "energy_types": ["Obscurité"],
+    "key_cards": ["Trioxhydre", "Rachou", "Diamat", "Méga Absol ex", "Darkrai ex", "Piers", "Chingling"],
+    "strategy": "Trioxhydre attache 2 énergies Obscurité par tour. Méga Absol ex révèle et défausse les Supporters adverses. Chingling bloque les Objets."
+  },
+  {
+    "id": "magnezone-oricorio",
+    "name": "Magnezone / Oricorio",
+    "archetype": "Électrik Anti-ex Wall",
+    "tier": "S",
+    "energy_types": ["Électrik"],
+    "key_cards": ["Magnezone", "Magnéton", "Magnéti", "Oricorio", "Générateur Électrique"],
+    "strategy": "Oricorio bloque tous les dégâts des Pokémon ex adverses. Contre parfait contre tous les decks ex."
+  },
+  {
+    "id": "mega-altaria-gourgeist",
+    "name": "Méga Altaria ex / Banshitrouille",
+    "archetype": "Psy Double Attaquant",
+    "tier": "A",
+    "energy_types": ["Psy"],
+    "key_cards": ["Méga Altaria ex", "Tylwing", "Banshitrouille", "Pitrouille", "Chingling", "Jirachi", "Cyrus"],
+    "strategy": "Banshitrouille inflige 70 dégâts pour 1 énergie. Double attaquant solide aux côtés de Méga Altaria ex."
+  },
+  {
+    "id": "mega-altaria-chingling",
+    "name": "Méga Altaria ex / Chingling",
+    "archetype": "Psy Control",
+    "tier": "A",
+    "energy_types": ["Psy"],
+    "key_cards": ["Méga Altaria ex", "Tylwing", "Chingling", "Jirachi", "Méloetta", "Cyrus"],
+    "strategy": "Chingling bloque les Objets adverses pendant le tour suivant. Jirachi snipe le banc. Méga Altaria ex ferme les parties."
+  },
+  {
+    "id": "greninja-mega-absol",
+    "name": "Amphinobi / Méga Absol ex",
+    "archetype": "Eau-Obscurité Snipe Disruption",
+    "tier": "A",
+    "energy_types": ["Eau", "Obscurité"],
+    "key_cards": ["Amphinobi", "Grenousse", "Croâporal", "Méga Absol ex", "Darkrai ex", "Cyrus"],
+    "strategy": "Amphinobi snipe le banc. Méga Absol ex défausse les Supporters adverses. Darkrai ex inflige 20 dégâts passifs."
+  },
+  {
+    "id": "leafeon-ogerpon",
+    "name": "Phyllali ex / Ogerpon ex Masque Turquoise",
+    "archetype": "Plante Ramp",
+    "tier": "A",
+    "energy_types": ["Plante"],
+    "key_cards": ["Phyllali ex", "Évoli", "Ogerpon ex Masque Turquoise", "Shaymin"],
+    "strategy": "Phyllali ex attache 1 énergie Plante par tour. Ogerpon ex peut infliger jusqu'à 120 dégâts si les deux actifs ont 5+ énergies combinées."
+  },
+  {
+    "id": "mega-gardevoir-meloetta",
+    "name": "Méga Gardevoir ex / Méloetta",
+    "archetype": "Psy Distribution d'énergie",
+    "tier": "A",
+    "energy_types": ["Psy"],
+    "key_cards": ["Méga Gardevoir ex", "Gardevoir", "Kirlia", "Tarsal", "Méloetta", "Mewtwo ex", "Mew ex", "Diantha"],
+    "strategy": "Méga Gardevoir ex distribue 3 énergies Psy depuis la zone d'énergie. Méloetta cherche les pièces d'installation."
+  },
+  {
+    "id": "mega-blaziken",
+    "name": "Méga Braségali ex",
+    "archetype": "Feu OHKO Aggro",
+    "tier": "A",
+    "energy_types": ["Feu"],
+    "key_cards": ["Méga Braségali ex", "Braségali", "Galifeu", "Poussifeu", "Entei ex", "Pansage-Feu", "Bonbon Rare", "May"],
+    "strategy": "Bonbon Rare skip Poussifeu directement en Méga Braségali ex au tour 2. Méga-Combustion inflige 120 + 20 Brûlure. L'énergie Feu défaussée est recyclée."
+  },
+  {
+    "id": "mimikyu-greninja",
+    "name": "Mimiqui ex / Amphinobi",
+    "archetype": "Psy-Eau Disruption",
+    "tier": "A",
+    "energy_types": ["Psy", "Eau"],
+    "key_cards": ["Mimiqui ex", "Amphinobi", "Grenousse", "Croâporal", "Giratina ex", "Cyrus"],
+    "strategy": "Mimiqui ex survit une attaque grâce à Déguisement. Amphinobi compense les dégâts faibles en snipant le banc."
+  },
+  {
+    "id": "greninja-mega-kangaskhan",
+    "name": "Amphinobi / Méga Kangaskhan ex",
+    "archetype": "Eau Double Frappe",
+    "tier": "B",
+    "energy_types": ["Eau"],
+    "key_cards": ["Méga Kangaskhan ex", "Kangaskhan", "Amphinobi", "Grenousse", "Croâporal", "Oricorio", "Mantyke", "Cyrus"],
+    "strategy": "Méga Kangaskhan ex attaque deux fois par tour : 80 sur l'actif, puis 40 sur le nouveau si le premier est KO."
+  },
+  {
+    "id": "mega-venusaur",
+    "name": "Méga Florizarre ex",
+    "archetype": "Plante Tank Control",
+    "tier": "B",
+    "energy_types": ["Plante"],
+    "key_cards": ["Méga Florizarre ex", "Florizarre ex", "Herbizarre", "Bulbizarre", "Fragilady", "Shaymin", "Bonbon Rare"],
+    "strategy": "Herbizarre s'auto-charge avec Synthèse. Fragilady augmente les PV de tous les Pokémon Plante. Tank difficile à éliminer."
+  },
+  {
+    "id": "gourgeist-houndstone",
+    "name": "Banshitrouille / Houndstone",
+    "archetype": "Psy Swarm",
+    "tier": "B",
+    "energy_types": ["Psy"],
+    "key_cards": ["Banshitrouille", "Pitrouille", "Houndstone", "Greavard", "Méloetta"],
+    "strategy": "Banshitrouille attaque pour 70 dégâts avec 1 énergie. Les dégâts de Houndstone augmentent avec le nombre de Pokémon Psy en jeu."
+  }
+]

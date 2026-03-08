@@ -98,10 +98,10 @@ var matchTable = {
             '<table class="table table-sm w-full">' +
             '<thead><tr>' +
             '<th>Date</th><th>Résultat</th><th>Deck</th>' +
-            '<th>Adversaire</th><th>Premier</th><th></th>' +
+            '<th>Adversaire</th><th>Premier</th><th>Score</th><th>Tours</th><th>Dégâts</th><th></th>' +
             '</tr></thead>' +
             '<tbody data-mt-tbody>' +
-            '<tr><td colspan="6" class="text-center opacity-50 py-4">Chargement…</td></tr>' +
+            '<tr><td colspan="9" class="text-center opacity-50 py-4">Chargement…</td></tr>' +
             '</tbody>' +
             '</table>' +
             '</div>' +
@@ -199,7 +199,7 @@ var matchTable = {
         var paginated = filtered.slice(start, start + pageSize);
 
         var html = paginated.length === 0
-            ? '<tr><td colspan="6" class="text-center opacity-50 py-6">Aucun match</td></tr>'
+            ? '<tr><td colspan="9" class="text-center opacity-50 py-6">Aucun match</td></tr>'
             : paginated.map(matchTable._rowHTML).join('');
 
         document.querySelectorAll('[data-mt-tbody]').forEach(function (tbody) {
@@ -254,6 +254,17 @@ var matchTable = {
             (m.notes ? '<div class="text-xs opacity-50 italic mt-0.5">' + matchTable._esc(m.notes) + '</div>' : '') +
             '</td>' +
             '<td class="text-sm">' + matchTable._esc(m.first_player || '?') + '</td>' +
+            '<td class="text-sm text-center">' +
+            (m.player_points != null && m.opponent_points != null
+                ? '<span class="font-mono">' + m.player_points + '-' + m.opponent_points + '</span>'
+                : '<span class="opacity-30">—</span>') +
+            '</td>' +
+            '<td class="text-sm text-center">' +
+            (m.turns_played != null ? m.turns_played : '<span class="opacity-30">—</span>') +
+            '</td>' +
+            '<td class="text-sm text-center">' +
+            (m.damage_dealt != null ? m.damage_dealt : '<span class="opacity-30">—</span>') +
+            '</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-ghost btn-xs" ' +
             'onclick="matchTable._startEdit(this)" title="Modifier">✎</button>' +
@@ -383,7 +394,7 @@ var matchTable = {
     _renderError: function (msg) {
         document.querySelectorAll('[data-mt-tbody]').forEach(function (tbody) {
             tbody.innerHTML =
-                '<tr><td colspan="6" class="text-center text-error py-4">' +
+                '<tr><td colspan="9" class="text-center text-error py-4">' +
                 matchTable._esc(msg || 'Erreur de chargement') + '</td></tr>';
         });
     },
@@ -392,7 +403,7 @@ var matchTable = {
     // Utilitaires
     // -------------------------------------------------------------------------
 
-    _resultBadge: function (result) {
+_resultBadge: function (result) {
         var style = getComputedStyle(document.documentElement);
         var colorMap = {
             'W': style.getPropertyValue('--color-win').trim(),

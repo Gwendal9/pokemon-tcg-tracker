@@ -49,18 +49,22 @@ def setup_logging(log_path: str = None) -> None:
 
     level = logging.DEBUG if os.environ.get("PTCG_DEBUG") else logging.INFO
 
-    handler = logging.handlers.RotatingFileHandler(
+    fmt = logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    file_handler = logging.handlers.RotatingFileHandler(
         log_path,
         maxBytes=1_000_000,
         backupCount=3,
     )
-    handler.setFormatter(logging.Formatter(
-        "%(asctime)s %(name)s %(levelname)s %(message)s"
-    ))
+    file_handler.setFormatter(fmt)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(fmt)
 
     root = logging.getLogger()
     root.setLevel(level)
-    root.addHandler(handler)
+    root.addHandler(file_handler)
+    root.addHandler(console_handler)
 
 
 def main() -> None:
@@ -128,37 +132,100 @@ def main() -> None:
         if new_state == CombatState.PRE_QUEUE:
             ocr_state.prequeue_img = capture_region_pil(region)
         elif new_state == CombatState.END_SCREEN:
-            end_img = capture_region_pil(region)
-            if end_img is None:
-                return
             active_deck_id = config_data.get("active_deck_id")
             deck_id = ocr_pipeline.extract_deck_from_prequeue(
                 ocr_state.prequeue_img, active_deck_id
             )
-            match_data = ocr_pipeline.extract_end_screen_data(end_img)
-            match_data["deck_id"] = deck_id
-            ocr_state.pending_match = match_data
-            logger.info("Match OCR extrait: result=%s", match_data.get("result"))
-            try:
-                with api._db_lock:
-                    saved = api._models.save_match(ocr_state.pending_match)
-                logger.info("Match enregistré: id=%d", saved["id"])
-                ocr_state.pending_match = None
-                window.evaluate_js(
-                    "window.dispatchEvent(new CustomEvent('match-created',{detail:{auto:true}}))"
+            # L'écran de stats n'apparaît qu'après le clic sur "Touchez pour continuer"
+            # On lance la capture dans un thread séparé pour ne pas bloquer le polling
+            def _capture_end_screen(region, deck_id):
+                import time as _time
+
+                # Capture immédiate pour récupérer le résultat (écran carte star)
+                first_img = capture_region_pil(region)
+                first_data = ocr_pipeline.extract_end_screen_data(first_img) if first_img else {}
+                result_backup = first_data.get("result", "?")
+
+                # Polling jusqu'à l'écran de stats (max 90s — attend le clic utilisateur)
+                match_data = None
+                stats_img = None
+                for _attempt in range(180):
+                    _time.sleep(0.5)
+                    img = capture_region_pil(region)
+                    if img is None:
+                        continue
+                    data = ocr_pipeline.extract_end_screen_data(img)
+                    raw = data.get("raw_ocr_data", "")
+                    on_stats_screen = "tours jou" in raw.lower() or "ordre d" in raw.lower()
+                    if data.get("turns_played") is not None or on_stats_screen:
+                        match_data = data
+                        stats_img = img
+                        logger.info("Stats trouvées à la tentative %d", _attempt + 1)
+                        break
+
+                if match_data is None:
+                    logger.warning("Écran de stats non trouvé après 90s — utilisation données partielles")
+                    match_data = first_data
+
+                # Conserver le résultat du premier écran si le stats screen ne l'a pas
+                if match_data.get("result") == "?":
+                    match_data["result"] = result_backup
+
+                # Fallback ML si l'OCR n'a pas reconnu le résultat
+                if match_data.get("result") == "?":
+                    ml_outcome = polling.last_outcome
+                    if ml_outcome == "win":
+                        match_data["result"] = "W"
+                    elif ml_outcome == "lose":
+                        match_data["result"] = "L"
+
+                match_data["deck_id"] = deck_id
+                logger.info(
+                    "Match OCR extrait: result=%s opponent=%s first=%s turns=%s pts=%s/%s dmg=%s",
+                    match_data.get("result"),
+                    match_data.get("opponent"),
+                    match_data.get("first_player"),
+                    match_data.get("turns_played"),
+                    match_data.get("player_points"),
+                    match_data.get("opponent_points"),
+                    match_data.get("damage_dealt"),
                 )
+
+                # Debug: sauvegarder l'image de stats pour analyse
                 try:
-                    from plyer import notification
-                    notification.notify(
-                        title="Pokemon TCG Tracker",
-                        message="Match enregistré : " + str(saved.get("result", "?")),
-                        app_name="Pokemon TCG Tracker",
-                        timeout=4,
+                    _img_to_save = stats_img or first_img
+                    if _img_to_save:
+                        _debug_path = os.path.join(_data_dir, "debug_end_screen.png")
+                        _img_to_save.save(_debug_path)
+                        logger.info("Debug end screen sauvegardé: %s", _debug_path)
+                except Exception as _e:
+                    logger.debug("Debug save failed: %s", _e)
+
+                try:
+                    with api._db_lock:
+                        saved = api._models.save_match(match_data)
+                    logger.info("Match enregistré: id=%d", saved["id"])
+                    window.evaluate_js(
+                        "window.dispatchEvent(new CustomEvent('match-created',{detail:{auto:true}}))"
                     )
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.error("Enregistrement match échoué: %s", e)
+                    try:
+                        from plyer import notification
+                        notification.notify(
+                            title="Pokemon TCG Tracker",
+                            message="Match enregistré : " + str(saved.get("result", "?")),
+                            app_name="Pokemon TCG Tracker",
+                            timeout=4,
+                        )
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.error("Enregistrement match échoué: %s", e)
+
+            threading.Thread(
+                target=_capture_end_screen,
+                args=(region, deck_id),
+                daemon=True,
+            ).start()
 
     # Polling MUMU 100ms + détection états combat (Stories 3.1, 3.2)
     detector = StateDetector()

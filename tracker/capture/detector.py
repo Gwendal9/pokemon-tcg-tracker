@@ -1,14 +1,20 @@
 """tracker/capture/detector.py — Machine à états combat + boucle de polling MUMU.
 
 CombatState : IDLE → PRE_QUEUE → IN_COMBAT → END_SCREEN → IDLE
-StateDetector : détecte l'état du jeu depuis une capture PIL.
+
+StateDetector : utilise le modèle ML (data/state_classifier.pkl) pour détecter
+l'état du jeu. Fallback sur "unknown" si le modèle est absent.
+
 PollingLoop : thread daemon 100ms — détecte MUMU + pilote les transitions d'état.
+Expose last_outcome ("win" | "lose" | None) après une transition vers END_SCREEN.
 """
 import logging
 import os
+import pickle
 import threading
 from enum import Enum
 
+import numpy as np
 from PIL import Image
 
 from tracker.capture.screen import capture_region_pil, find_mumu_window
@@ -16,125 +22,191 @@ from tracker.paths import get_data_dir
 
 logger = logging.getLogger(__name__)
 
-_CAL_DIR = os.path.join(get_data_dir(), "calibration")
-_REF_PATHS = {
-    "pre_queue":  os.path.join(_CAL_DIR, "pre_queue.png"),
-    "in_combat":  os.path.join(_CAL_DIR, "in_combat.png"),
-    "end_screen": os.path.join(_CAL_DIR, "end_screen.png"),
-}
+_MODEL_PATH = os.path.join(get_data_dir(), "state_classifier.pkl")
+_IMG_SIZE = (160, 120)
 
-# Seuil MSE — valeur basse = images similaires. À ajuster si trop sensible.
-_MSE_THRESHOLD = 2000.0
 
+# ---------------------------------------------------------------------------
+# Features (dupliquées ici pour éviter une dépendance circulaire avec sampler)
+# ---------------------------------------------------------------------------
+
+def _extract_features(img: Image.Image) -> np.ndarray:
+    from skimage.feature import hog  # noqa: PLC0415
+
+    img_rgb = img.convert("RGB").resize(_IMG_SIZE, Image.LANCZOS)
+    arr = np.asarray(img_rgb, dtype=np.uint8)
+
+    gray = np.asarray(img_rgb.convert("L"), dtype=np.uint8)
+    hog_feat = hog(
+        gray,
+        orientations=8,
+        pixels_per_cell=(16, 16),
+        cells_per_block=(2, 2),
+        feature_vector=True,
+    )
+
+    hsv = _rgb_to_hsv(arr)
+    hist_feats = []
+    for ch in range(3):
+        h, _ = np.histogram(hsv[:, :, ch], bins=16, range=(0, 1))
+        hist_feats.append(h / (h.sum() + 1e-6))
+
+    return np.concatenate([hog_feat, np.concatenate(hist_feats)])
+
+
+def _rgb_to_hsv(arr: np.ndarray) -> np.ndarray:
+    r, g, b = arr[:, :, 0] / 255., arr[:, :, 1] / 255., arr[:, :, 2] / 255.
+    cmax = np.maximum(np.maximum(r, g), b)
+    cmin = np.minimum(np.minimum(r, g), b)
+    delta = cmax - cmin
+    h = np.zeros_like(r)
+    s = np.where(cmax > 0, delta / cmax, 0.)
+    v = cmax
+    mr = (delta > 0) & (cmax == r)
+    mg = (delta > 0) & (cmax == g)
+    mb = (delta > 0) & (cmax == b)
+    h[mr] = ((g[mr] - b[mr]) / delta[mr]) % 6
+    h[mg] = (b[mg] - r[mg]) / delta[mg] + 2
+    h[mb] = (r[mb] - g[mb]) / delta[mb] + 4
+    h /= 6.
+    return np.stack([h, s, v], axis=2)
+
+
+def _crop_roi(img: Image.Image, roi: tuple) -> Image.Image:
+    w, h = img.size
+    return img.crop((
+        int(roi[0] * w), int(roi[1] * h),
+        int((roi[0] + roi[2]) * w), int((roi[1] + roi[3]) * h),
+    ))
+
+
+# ---------------------------------------------------------------------------
+# CombatState
+# ---------------------------------------------------------------------------
 
 class CombatState(Enum):
-    """États de la machine à états du pipeline de capture."""
     IDLE = "idle"
     PRE_QUEUE = "pre_queue"
     IN_COMBAT = "in_combat"
     END_SCREEN = "end_screen"
 
 
+# ---------------------------------------------------------------------------
+# StateDetector
+# ---------------------------------------------------------------------------
+
 class StateDetector:
     """Détecte l'état du jeu Pokemon TCG Pocket depuis une image PIL.
 
-    Calibration :
-    1. Lancer le jeu dans l'état voulu
-    2. Appeler calibrate(state_name, img) pour sauvegarder l'image de référence
-    3. Les détections suivantes comparent par MSE l'image capturée à la référence
-
-    Sans calibration (pas de fichier PNG de référence), toutes les méthodes
-    retournent False — aucune transition ne peut avoir lieu.
+    Utilise le modèle SVM entraîné (state_classifier.pkl).
+    Si le modèle est absent, toutes les méthodes retournent False.
     """
 
     def __init__(self):
-        self._refs = {}  # cache {state_name: Image.Image ou None}
+        self._model = None        # chargé lazily
+        self._model_loaded = False
 
     # ------------------------------------------------------------------
-    # Calibration
+    # Modèle
     # ------------------------------------------------------------------
 
-    def calibrate(self, state_name: str, img) -> bool:
-        """Sauvegarde img comme référence pour state_name.
-
-        Args:
-            state_name: 'pre_queue', 'in_combat' ou 'end_screen'.
-            img: PIL Image capturée dans cet état.
-
-        Returns:
-            True si sauvegardé, False si state_name invalide ou erreur I/O.
-        """
-        if state_name not in _REF_PATHS:
-            logger.warning("calibrate: état inconnu '%s'", state_name)
-            return False
-        os.makedirs(_CAL_DIR, exist_ok=True)
+    def _load_model(self) -> dict | None:
+        if self._model_loaded:
+            return self._model
+        self._model_loaded = True
+        if not os.path.exists(_MODEL_PATH):
+            logger.warning("Modèle ML absent : %s — détection désactivée.", _MODEL_PATH)
+            return None
         try:
-            img.convert("RGB").save(_REF_PATHS[state_name])
-            self._refs.pop(state_name, None)  # invalider le cache
-            logger.info("Calibration sauvegardée : %s → %s", state_name, _REF_PATHS[state_name])
-            return True
+            with open(_MODEL_PATH, "rb") as f:
+                self._model = pickle.load(f)
+            logger.info("Modèle ML chargé : %s", _MODEL_PATH)
         except Exception as e:
-            logger.error("calibrate %s: %s", state_name, e)
-            return False
+            logger.error("Erreur chargement modèle : %s", e)
+        return self._model
 
-    def is_calibrated(self, state_name: str) -> bool:
-        """Retourne True si un fichier de référence existe pour state_name."""
-        return os.path.exists(_REF_PATHS.get(state_name, ""))
+    def is_model_available(self) -> bool:
+        return os.path.exists(_MODEL_PATH)
+
+    def reload_model(self):
+        """Force le rechargement du modèle (utile après un réentraînement)."""
+        self._model = None
+        self._model_loaded = False
 
     # ------------------------------------------------------------------
-    # Détection (MSE contre référence calibrée)
+    # Prédiction
+    # ------------------------------------------------------------------
+
+    def predict(self, img) -> str:
+        """Retourne 'pre_queue', 'in_combat', 'end_screen', ou 'unknown'."""
+        model = self._load_model()
+        if model is None:
+            return "unknown"
+        try:
+            feat = _extract_features(img)
+            return str(model["pipeline"].predict([feat])[0])
+        except Exception as e:
+            logger.error("predict: %s", e)
+            return "unknown"
+
+    def predict_outcome(self, img) -> str:
+        """Retourne 'win' ou 'lose' depuis un écran de fin (règle couleur ROI haut)."""
+        model = self._load_model()
+        if model is None:
+            return "unknown"
+        rule = model.get("win_lose_rule", {})
+        if not rule:
+            return "unknown"
+        try:
+            roi = _crop_roi(img.convert("RGB"), rule["roi"])
+            arr = np.asarray(roi, dtype=float)
+            r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+            brightness = (r + g + b).mean() / 3
+            warm = r.mean() - b.mean()
+
+            votes_win = 0
+            if rule.get("win_is_brighter"):
+                votes_win += 1 if brightness > rule["brightness_threshold"] else -1
+            else:
+                votes_win += 1 if brightness < rule["brightness_threshold"] else -1
+            if rule.get("win_is_warmer"):
+                votes_win += 1 if warm > rule["warm_threshold"] else -1
+            else:
+                votes_win += 1 if warm < rule["warm_threshold"] else -1
+
+            return "win" if votes_win >= 0 else "lose"
+        except Exception as e:
+            logger.error("predict_outcome: %s", e)
+            return "unknown"
+
+    # ------------------------------------------------------------------
+    # Interface états (utilisée par PollingLoop)
     # ------------------------------------------------------------------
 
     def is_pre_queue_ranked(self, img) -> bool:
-        """Détecte l'écran de file d'attente ranked."""
-        ref = self._load_ref("pre_queue")
-        if ref is None:
-            return False
-        return self._compare(img, ref) < _MSE_THRESHOLD
+        return self.predict(img) == "pre_queue"
 
     def is_in_combat(self, img) -> bool:
-        """Détecte que le combat est actuellement en cours."""
-        ref = self._load_ref("in_combat")
-        if ref is None:
-            return False
-        return self._compare(img, ref) < _MSE_THRESHOLD
+        return self.predict(img) == "in_combat"
 
     def is_end_screen(self, img) -> bool:
-        """Détecte l'écran de résultat de fin de combat (WIN/LOSE)."""
-        ref = self._load_ref("end_screen")
-        if ref is None:
-            return False
-        return self._compare(img, ref) < _MSE_THRESHOLD
+        return self.predict(img) == "end_screen"
 
     # ------------------------------------------------------------------
-    # Méthodes internes
+    # Calibration (conservée pour compatibilité UI — non utilisée par ML)
     # ------------------------------------------------------------------
 
-    def _load_ref(self, state_name):
-        """Charge et met en cache l'image de référence (lazy)."""
-        if state_name not in self._refs:
-            path = _REF_PATHS.get(state_name, "")
-            if os.path.exists(path):
-                try:
-                    self._refs[state_name] = Image.open(path).convert("RGB")
-                except Exception as e:
-                    logger.error("_load_ref %s: %s", state_name, e)
-                    self._refs[state_name] = None
-            else:
-                self._refs[state_name] = None
-        return self._refs[state_name]
+    def calibrate(self, state_name: str, img) -> bool:
+        logger.info("calibrate() ignorée — la détection utilise le modèle ML.")
+        return True
 
-    def _compare(self, img, ref_img) -> float:
-        """MSE pixel-par-pixel entre img et ref_img. Valeur basse = similaire."""
-        try:
-            import numpy as np  # noqa: PLC0415 — lazy import (disponible via easyocr)
-            target = img.convert("RGB").resize(ref_img.size, Image.LANCZOS)
-            arr1 = np.asarray(target, dtype=float)
-            arr2 = np.asarray(ref_img, dtype=float)
-            return float(np.mean((arr1 - arr2) ** 2))
-        except Exception:
-            return float("inf")
+    def is_calibrated(self, state_name: str) -> bool:
+        return self.is_model_available()
 
+
+# ---------------------------------------------------------------------------
+# PollingLoop
+# ---------------------------------------------------------------------------
 
 class PollingLoop:
     """Boucle de polling à 100ms — détecte MUMU et pilote la machine à états.
@@ -147,15 +219,11 @@ class PollingLoop:
                               on_state_changed=handle_state_change)
         thread = threading.Thread(target=polling.start, daemon=True)
         thread.start()
+
+    Après une transition vers END_SCREEN, polling.last_outcome vaut 'win' ou 'lose'.
     """
 
     def __init__(self, interval: float = 0.1, config=None, detector=None):
-        """
-        Args:
-            interval: Intervalle de polling en secondes (défaut 100ms).
-            config: ConfigManager pour lire mumu_region. Si None, détection d'état désactivée.
-            detector: StateDetector pour analyser les frames. Si None, détection d'état désactivée.
-        """
         self._interval = interval
         self._config = config
         self._detector = detector
@@ -163,6 +231,7 @@ class PollingLoop:
         self._lock = threading.Lock()
         self._state = CombatState.IDLE
         self._mumu_detected = False
+        self._last_outcome = None
         self._on_mumu_detected = None
         self._on_mumu_lost = None
         self._on_state_changed = None
@@ -181,25 +250,28 @@ class PollingLoop:
         with self._lock:
             return self._mumu_detected
 
+    @property
+    def last_outcome(self) -> str | None:
+        """'win', 'lose' ou None — résultat du dernier combat détecté."""
+        with self._lock:
+            return self._last_outcome
+
     # ------------------------------------------------------------------
     # Configuration & cycle de vie
     # ------------------------------------------------------------------
 
     def set_callbacks(self, on_mumu_detected=None, on_mumu_lost=None,
                       on_state_changed=None):
-        """Enregistre les callbacks pour les transitions."""
         self._on_mumu_detected = on_mumu_detected
         self._on_mumu_lost = on_mumu_lost
         self._on_state_changed = on_state_changed
 
     def start(self):
-        """Démarre la boucle de polling (bloquant — appeler depuis un thread dédié)."""
         self._stop_event.clear()
         logger.info("PollingLoop démarrée (interval=%.3fs)", self._interval)
         self._loop()
 
     def stop(self):
-        """Arrête la boucle de polling (thread-safe)."""
         self._stop_event.set()
         logger.info("PollingLoop arrêtée")
 
@@ -216,7 +288,6 @@ class PollingLoop:
             self._stop_event.wait(self._interval)
 
     def _tick(self):
-        """Un cycle de polling : détecte MUMU, transitions callbacks, analyse état."""
         hwnd = find_mumu_window()
         on_detected = None
         on_lost = None
@@ -232,18 +303,15 @@ class PollingLoop:
                 self._state = CombatState.IDLE
                 on_lost = self._on_mumu_lost
 
-        # Callbacks hors du lock
         if on_detected:
             on_detected()
         if on_lost:
             on_lost()
 
-        # Détection d'état (uniquement si MUMU présent + config + detector injectés)
         if self._mumu_detected and self._config is not None and self._detector is not None:
             self._detect_and_transition()
 
     def _detect_and_transition(self):
-        """Capture un frame et détermine le prochain état via StateDetector."""
         region = self._config.get_all().get("mumu_region")
         if not region:
             return
@@ -254,7 +322,7 @@ class PollingLoop:
 
         current = self.state
         try:
-            next_state = self._compute_next_state(current, img)
+            next_state, outcome = self._compute_next_state(current, img)
         except Exception as e:
             logger.error("state detection error: %s", e)
             return
@@ -263,38 +331,38 @@ class PollingLoop:
             with self._lock:
                 prev_state = self._state
                 self._state = next_state
-            logger.info("État → %s (était %s)", next_state.value, prev_state.value)
+                if outcome is not None:
+                    self._last_outcome = outcome
+            logger.info("État → %s (était %s)%s", next_state.value, prev_state.value,
+                        f"  outcome={outcome}" if outcome else "")
             if self._on_state_changed:
                 self._on_state_changed(prev_state, next_state)
 
-    def _compute_next_state(self, current: CombatState, img) -> CombatState:
-        """Applique les règles de transition de la machine à états.
+    def _compute_next_state(self, current: CombatState, img) -> tuple[CombatState, str | None]:
+        """Retourne (next_state, outcome).
 
-        Règles :
-          IDLE       + is_pre_queue_ranked → PRE_QUEUE
-          PRE_QUEUE  + is_in_combat        → IN_COMBAT
-          PRE_QUEUE  + !is_pre_queue_ranked → IDLE   (a quitté la queue)
-          IN_COMBAT  + is_end_screen       → END_SCREEN
-          END_SCREEN + !is_end_screen      → IDLE
+        outcome est 'win' ou 'lose' lors de la transition vers END_SCREEN, None sinon.
         """
         d = self._detector
 
         if current == CombatState.IDLE:
             if d.is_pre_queue_ranked(img):
-                return CombatState.PRE_QUEUE
+                return CombatState.PRE_QUEUE, None
 
         elif current == CombatState.PRE_QUEUE:
             if d.is_in_combat(img):
-                return CombatState.IN_COMBAT
+                return CombatState.IN_COMBAT, None
             elif not d.is_pre_queue_ranked(img):
-                return CombatState.IDLE
+                return CombatState.IDLE, None
 
         elif current == CombatState.IN_COMBAT:
             if d.is_end_screen(img):
-                return CombatState.END_SCREEN
+                outcome = d.predict_outcome(img)
+                logger.info("Fin de combat détectée : %s", outcome)
+                return CombatState.END_SCREEN, outcome
 
         elif current == CombatState.END_SCREEN:
             if not d.is_end_screen(img):
-                return CombatState.IDLE
+                return CombatState.IDLE, None
 
-        return current
+        return current, None

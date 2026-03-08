@@ -17,7 +17,14 @@
             <button class="tab tab-active" data-tab="dashboard">Dashboard</button>
             <button class="tab" data-tab="history">Historique</button>
             <button class="tab" data-tab="decks">Decks</button>
+            <button class="tab" data-tab="samples">Samples</button>
             <button class="tab" data-tab="config">Config</button>
+        </div>
+        <!-- Indicateur de statut détection -->
+        <div id="detection-status" class="flex items-center gap-1 mr-3 text-xs px-2 py-1 rounded-full bg-base-300"
+             title="Statut de la détection automatique">
+            <span id="detection-dot" class="w-2 h-2 rounded-full bg-gray-500 inline-block"></span>
+            <span id="detection-label">—</span>
         </div>
         <!-- Bouton ajout match -->
         <button class="btn btn-primary btn-sm mr-2"
@@ -86,6 +93,46 @@
             <div id="decks-list"></div>
         </section>
 
+        <!-- Onglet Samples -->
+        <section id="tab-samples" class="hidden mt-4">
+            <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-base-300">Capture de données</h2>
+
+            <!-- Contrôles sampling -->
+            <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Enregistrement automatique</h3>
+                <p class="text-sm opacity-70 mb-3">
+                    Lance l'enregistrement, joue normalement. Les changements d'écran sont capturés automatiquement.
+                </p>
+                <div class="flex gap-3 items-center flex-wrap">
+                    <button id="sampling-start-btn" class="btn btn-sm btn-primary">Démarrer l'enregistrement</button>
+                    <button id="sampling-stop-btn" class="btn btn-sm btn-error" disabled>Arrêter</button>
+                    <span id="sampling-status-text" class="text-sm opacity-60"></span>
+                </div>
+                <div class="mt-3 flex gap-6 text-sm">
+                    <span>Captures session : <strong id="sampling-saved-count">0</strong></span>
+                    <span>À labéliser : <strong id="sampling-unlabeled-count">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Galerie de labélisation -->
+            <div class="bg-base-200 rounded-box p-4 border border-base-300">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">Labélisation</h3>
+                    <button id="sampling-refresh-btn" class="btn btn-xs btn-ghost">Rafraîchir</button>
+                </div>
+                <p class="text-sm opacity-60 mb-1">Clique sur un label pour chaque image. "Supprimer" retire l'image du dataset.</p>
+                <div class="flex gap-1 flex-wrap mb-3 text-xs opacity-50">
+                    <span class="badge badge-outline">pre_queue = file d'attente</span>
+                    <span class="badge badge-outline">in_combat = pendant le combat</span>
+                    <span class="badge badge-outline">win = victoire</span>
+                    <span class="badge badge-outline">lose = défaite</span>
+                </div>
+                <div id="samples-gallery" class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(300px,1fr));">
+                    <p class="text-sm opacity-50 col-span-full">Aucune capture à labéliser.</p>
+                </div>
+            </div>
+        </section>
+
         <!-- Onglet Config -->
         <section id="tab-config" class="hidden mt-4">
             <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-base-300">Configuration</h2>
@@ -94,10 +141,15 @@
             <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
                 <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Région MUMU</h3>
                 <div id="config-region-display" class="font-mono text-sm opacity-70 mb-2"></div>
-                <button id="config-region-select-btn" class="btn btn-sm btn-outline">
-                    Configurer la région MUMU
-                </button>
-                <p id="config-status" class="text-success text-sm mt-2" style="display:none;"></p>
+                <div class="flex gap-2 flex-wrap">
+                    <button id="config-region-auto-btn" class="btn btn-sm btn-primary">
+                        Détecter automatiquement
+                    </button>
+                    <button id="config-region-select-btn" class="btn btn-sm btn-outline">
+                        Sélection manuelle
+                    </button>
+                </div>
+                <p id="config-status" class="text-sm mt-2" style="display:none;"></p>
             </div>
 
             <!-- Deck actif -->
@@ -116,7 +168,7 @@
             <p id="region-required-hint"
                class="text-sm mb-3 p-3 rounded-box border border-base-300 opacity-70"
                style="display:none;">
-                Configurez la région MUMU ci-dessus pour activer la capture et la calibration.
+                Configurez la région MUMU ci-dessus pour activer la capture.
             </p>
 
             <!-- Test capture -->
@@ -132,43 +184,29 @@
                      style="display:none; max-width:100%; margin-top:8px; border-radius:8px;">
             </div>
 
-            <!-- Calibration détecteur -->
+            <!-- Statut modèle ML -->
             <div class="bg-base-200 rounded-box p-4 border border-base-300">
                 <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">
-                    Calibration du détecteur d'état
+                    Détecteur d'état automatique
                 </h3>
                 <p class="text-sm opacity-70 mb-3">
-                    Pour chaque état, lancez le jeu dans cet état et cliquez "Calibrer".
-                    Le détecteur comparera les captures suivantes à ces références.
+                    La détection utilise un modèle ML entraîné sur vos captures labélisées.
+                    Pour réentraîner le modèle, utilisez l'onglet Samples puis
+                    <code class="font-mono text-xs">tools/train_classifier.py</code>.
                 </p>
-                <div class="flex flex-col gap-3">
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm">Pré-queue ranked</span>
-                        <div class="flex items-center gap-3">
-                            <span id="cal-status-pre_queue" class="text-xs"></span>
-                            <button class="btn btn-sm btn-outline"
-                                    onclick="app_calibrate('pre_queue')" class="btn btn-sm btn-outline btn-calibrate">Calibrer</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm">En combat</span>
-                        <div class="flex items-center gap-3">
-                            <span id="cal-status-in_combat" class="text-xs"></span>
-                            <button class="btn btn-sm btn-outline"
-                                    onclick="app_calibrate('in_combat')" class="btn btn-sm btn-outline btn-calibrate">Calibrer</button>
-                        </div>
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="text-sm">Fin de match</span>
-                        <div class="flex items-center gap-3">
-                            <span id="cal-status-end_screen" class="text-xs"></span>
-                            <button class="btn btn-sm btn-outline"
-                                    onclick="app_calibrate('end_screen')" class="btn btn-sm btn-outline btn-calibrate">Calibrer</button>
-                        </div>
-                    </div>
+                <div class="flex items-center gap-3">
+                    <span id="ml-model-status" class="text-sm"></span>
                 </div>
-                <p id="cal-error"   class="text-error   text-sm mt-3" style="display:none;"></p>
-                <p id="cal-success" class="text-success text-sm mt-3" style="display:none;"></p>
+            </div>
+
+            <!-- Test OCR -->
+            <div class="bg-base-200 rounded-box p-4 mt-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Test OCR</h3>
+                <p class="text-sm opacity-70 mb-3">
+                    Capture l'écran MuMu actuel et affiche les données extraites. Reste sur l'écran de fin de combat pour tester.
+                </p>
+                <button id="btn-test-ocr" class="btn btn-sm btn-outline">Tester OCR maintenant</button>
+                <pre id="ocr-test-result" class="mt-3 text-xs bg-base-300 rounded p-2 hidden whitespace-pre-wrap"></pre>
             </div>
         </section>
 
@@ -269,6 +307,7 @@
     <!-- Scripts -->
     <script src="components/deck-manager.js"></script>
     <script src="components/config-manager.js"></script>
+    <script src="components/sample-manager.js"></script>
     <script src="components/capture-test.js"></script>
     <script src="components/active-deck-selector.js"></script>
     <script src="components/stats-bar.js"></script>
