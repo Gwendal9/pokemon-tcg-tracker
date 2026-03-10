@@ -109,16 +109,17 @@ class OcrPipeline:
         strip = self._find_deck_card_strip(img)
         energy_type = strip["energy_type"] if strip else "?"
 
-        # Nom du deck : zone sous la bande colorée
-        # La bande est en haut de la carte deck ; le nom est environ 17-28% de h en dessous du haut de la bande
+        # Nom du deck : zone fixe y=[64%, 85%]
+        # Le nom personnalisé est toujours dans cette zone dans les deux layouts :
+        # - Standard    : nom à y≈66-73% (juste sous la carte)
+        # - "Règles"    : nom à y≈74-84% (sous la miniature)
+        # "C'est parti !" est filtré par blacklist si présent en bas de zone.
         deck_name = "?"
         if strip:
-            name_y1 = strip["y_top"] + int(0.17 * h)
-            name_y2 = strip["y_top"] + int(0.28 * h)
-            name_y1 = min(name_y1, h - 1)
-            name_y2 = min(name_y2, h)
+            name_y1 = int(0.64 * h)
+            name_y2 = int(0.85 * h)
             if name_y2 > name_y1:
-                name_crop = img.crop((int(0.10 * w), name_y1, int(0.90 * w), name_y2))
+                name_crop = img.crop((int(0.05 * w), name_y1, int(0.95 * w), name_y2))
                 try:
                     deck_results = self._read_text(name_crop)
                     deck_name = self._parse_prequeue_deck_name(deck_results)
@@ -135,11 +136,16 @@ class OcrPipeline:
     def _find_deck_card_strip(self, img) -> dict | None:
         """Localise la bande colorée du cadre deck indépendamment de sa position.
 
+        Deux layouts possibles :
+        - Standard    : une seule bande colorée (en-tête de la carte deck, y≈38-50%).
+        - "Règles"    : deux bandes — grande bannière énergie en haut (y≈16-27%)
+                        + en-tête de miniature toujours jaune en bas (y≈55-65%).
+
         Algorithme :
-        1. Recherche dans x=[18%,82%] y=[8%,68%] (exclut UI haut + bouton C'est parti).
-        2. Calcule par ligne la fraction de pixels fortement saturés (sat > 0.40).
-        3. Prend la bande la plus basse (notre deck, toujours en bas de l'écran).
-        4. Étend la bande verticalement jusqu'à ce que la saturation chute.
+        1. Recherche dans x=[18%,82%] y=[8%,68%].
+        2. Détecte TOUTES les bandes saturées (pas seulement la dernière).
+        3. Utilise la bande la PLUS HAUTE pour l'énergie — correcte dans les deux layouts
+           (dans "Règles", c'est la bannière colorée ; en standard, c'est l'en-tête deck).
 
         Returns:
             {"y_top", "y_bot", "hue_deg", "energy_type"} en pixels absolus, ou None.
@@ -158,31 +164,39 @@ class OcrPipeline:
             r, g, b = section[:,:,0]/255., section[:,:,1]/255., section[:,:,2]/255.
             mx = np.maximum(np.maximum(r, g), b)
             mn = np.minimum(np.minimum(r, g), b)
-            # Fraction de pixels saturés par ligne (seuil sat > 0.40)
             row_frac = np.where(mx > 0.15, (mx - mn) / mx, 0.)
             row_frac = (row_frac > 0.40).mean(axis=1)
 
-            # Bande la plus basse avec ≥12% de pixels saturés
             SAT_THRESHOLD = 0.12
-            best_row = -1
-            for i in range(sh - 1, -1, -1):
+            MIN_GAP = 8  # lignes de faible saturation pour séparer deux bandes
+
+            # Détecter toutes les bandes saturées contiguës
+            bands = []  # [(row_start, row_end), ...]
+            in_band = False
+            band_start = -1
+            last_active = -1
+
+            for i in range(sh):
                 if row_frac[i] >= SAT_THRESHOLD:
-                    best_row = i
-                    break
-            if best_row == -1:
+                    if not in_band:
+                        in_band = True
+                        band_start = i
+                    last_active = i
+                elif in_band and (i - last_active) > MIN_GAP:
+                    in_band = False
+                    if last_active - band_start >= 2:
+                        bands.append((band_start, last_active))
+
+            if in_band and band_start >= 0 and last_active - band_start >= 2:
+                bands.append((band_start, last_active))
+
+            if not bands:
                 return None
 
-            # Étendre la bande complète vers le haut et le bas
-            ext = SAT_THRESHOLD * 0.5
-            y_top = best_row
-            while y_top > 0 and row_frac[y_top - 1] >= ext:
-                y_top -= 1
-            y_bot = best_row
-            while y_bot < sh - 1 and row_frac[y_bot + 1] >= ext:
-                y_bot += 1
+            # Bande du HAUT = indicateur d'énergie (valide dans les deux layouts)
+            top_band_start, top_band_end = bands[0]
+            strip = section[top_band_start:top_band_end + 1]
 
-            # HSV de la bande pour classifier l'énergie
-            strip = section[y_top:y_bot + 1]
             sr, sg, sb_ = strip[:,:,0]/255., strip[:,:,1]/255., strip[:,:,2]/255.
             s_mx = np.maximum(np.maximum(sr, sg), sb_)
             s_mn = np.minimum(np.minimum(sr, sg), sb_)
@@ -207,8 +221,8 @@ class OcrPipeline:
             val = float(np.median(s_val[mask]))
 
             return {
-                "y_top":       y1 + y_top,
-                "y_bot":       y1 + y_bot,
+                "y_top":       y1 + top_band_start,
+                "y_bot":       y1 + top_band_end,
                 "hue_deg":     round(hue, 1),
                 "energy_type": self._classify_energy_hue(hue, val),
             }
@@ -249,9 +263,27 @@ class OcrPipeline:
                 return "événement"
         return "?"
 
+    _DECK_NAME_BLACKLIST = {
+        "c'est parti", "c'est parti !", "c'est parti!", "auto", "désactivé",
+        "activé", "désactivée", "activée", "règles", "compétitif",
+        "match aléatoire", "ici, vous pouvez choisir votre mode de combat",
+        "mode de combat", "et affronter le monde entier.",
+    }
+
     def _parse_prequeue_deck_name(self, ocr_results) -> str:
-        parts = [text.strip() for (_, text, conf) in ocr_results
-                 if conf >= CONFIDENCE_THRESHOLD and text.strip()]
+        parts = []
+        for (_, text, conf) in ocr_results:
+            if conf < CONFIDENCE_THRESHOLD:
+                continue
+            stripped = text.strip()
+            if not stripped:
+                continue
+            if stripped.lower() in self._DECK_NAME_BLACKLIST:
+                continue
+            # Ignorer les chiffres seuls (numéros de deck : "01", "09", "21"…)
+            if stripped.isdigit():
+                continue
+            parts.append(stripped)
         return " ".join(parts) if parts else "?"
 
     # ------------------------------------------------------------------
