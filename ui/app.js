@@ -488,6 +488,8 @@ window.addEventListener('match-created', function (e) {
     var isAuto = e.detail && e.detail.auto;
     showToast(isAuto ? 'Match enregistré automatiquement !' : 'Match enregistré', 'success');
     window.dispatchEvent(new CustomEvent('seasons-load-requested'));
+    window.dispatchEvent(new CustomEvent('matches-load-requested'));
+    window.dispatchEvent(new CustomEvent('stats-load-requested'));
 });
 
 // ---------------------------------------------------------------------------

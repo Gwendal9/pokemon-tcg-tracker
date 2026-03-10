@@ -228,48 +228,66 @@ def main() -> None:
             def _capture_end_screen(region, deck_id):
                 import time as _time
 
-                # Capture immédiate pour récupérer le résultat (écran carte star)
-                first_img = capture_region_pil(region)
-                first_data = ocr_pipeline.extract_end_screen_data(first_img) if first_img else {}
-                result_backup = first_data.get("result", "?")
+                # Snapshot du résultat ML au moment de la transition (avant tout OCR)
+                ml_outcome = polling.last_outcome
 
-                # Polling jusqu'à l'écran de stats (max 90s — attend le clic utilisateur)
-                match_data = None
-                stats_img = None
-                for _attempt in range(180):
-                    _time.sleep(0.5)
-                    img = capture_region_pil(region)
-                    if img is None:
-                        continue
-                    data = ocr_pipeline.extract_end_screen_data(img)
-                    raw = data.get("raw_ocr_data", "")
-                    on_stats_screen = "tours jou" in raw.lower() or "ordre d" in raw.lower()
-                    if data.get("turns_played") is not None or on_stats_screen:
-                        match_data = data
-                        stats_img = img
-                        logger.info("Stats trouvées à la tentative %d", _attempt + 1)
-                        break
+                try:
+                    # Capture immédiate pour récupérer le résultat (écran carte star)
+                    first_img = capture_region_pil(region)
+                    try:
+                        first_data = ocr_pipeline.extract_end_screen_data(first_img) if first_img else {}
+                    except Exception as _e:
+                        logger.warning("OCR first frame échoué: %s", _e)
+                        first_data = {}
+                    result_backup = first_data.get("result", "?")
 
-                if match_data is None:
-                    logger.warning("Écran de stats non trouvé après 90s — utilisation données partielles")
-                    match_data = first_data
+                    # Polling jusqu'à l'écran de stats (max 90s — attend le clic utilisateur)
+                    match_data = None
+                    stats_img = None
+                    for _attempt in range(180):
+                        _time.sleep(0.5)
+                        img = capture_region_pil(region)
+                        if img is None:
+                            continue
+                        try:
+                            data = ocr_pipeline.extract_end_screen_data(img)
+                        except Exception:
+                            continue
+                        raw = data.get("raw_ocr_data", "")
+                        on_stats_screen = "tours jou" in raw.lower() or "ordre d" in raw.lower()
+                        if data.get("turns_played") is not None or on_stats_screen:
+                            match_data = data
+                            stats_img = img
+                            logger.info("Stats trouvées à la tentative %d", _attempt + 1)
+                            break
 
-                # Conserver le résultat du premier écran si le stats screen ne l'a pas
-                if match_data.get("result") == "?":
-                    match_data["result"] = result_backup
+                    if match_data is None:
+                        logger.warning("Écran de stats non trouvé après 90s — utilisation données partielles")
+                        match_data = first_data if first_data else {}
+
+                    # Conserver le résultat du premier écran si le stats screen ne l'a pas
+                    if match_data.get("result", "?") == "?":
+                        match_data["result"] = result_backup
+
+                except Exception as _global_e:
+                    logger.error("_capture_end_screen OCR phase: %s", _global_e)
+                    match_data = {}
 
                 # Fallback ML si l'OCR n'a pas reconnu le résultat
-                if match_data.get("result") == "?":
-                    ml_outcome = polling.last_outcome
+                if match_data.get("result", "?") == "?":
                     if ml_outcome == "win":
                         match_data["result"] = "W"
                     elif ml_outcome == "lose":
                         match_data["result"] = "L"
+                    logger.info("Résultat depuis ML fallback: %s", match_data.get("result"))
 
                 match_data["deck_id"]      = deck_id
                 match_data["match_type"]   = ocr_state.prequeue_data.get("match_type")
                 match_data["energy_type"]  = ocr_state.prequeue_data.get("energy_type")
                 match_data["conceded_by"]  = "opponent" if ocr_state.opponent_conceded else None
+                if not match_data.get("captured_at"):
+                    from datetime import datetime as _dt
+                    match_data["captured_at"] = _dt.now().isoformat()
                 logger.info(
                     "Match OCR extrait: result=%s opponent=%s first=%s turns=%s pts=%s/%s dmg=%s",
                     match_data.get("result"),
@@ -283,7 +301,7 @@ def main() -> None:
 
                 # Debug: sauvegarder l'image de stats pour analyse
                 try:
-                    _img_to_save = stats_img or first_img
+                    _img_to_save = stats_img if stats_img is not None else first_img
                     if _img_to_save:
                         _debug_path = os.path.join(_data_dir, "debug_end_screen.png")
                         _img_to_save.save(_debug_path)
