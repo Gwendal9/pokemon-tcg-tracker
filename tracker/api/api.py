@@ -126,11 +126,14 @@ class TrackerAPI:
     def select_window_as_region(self, hwnd: int) -> dict:
         """Sélectionne une fenêtre par son hwnd comme région de capture et affiche le cadre rouge."""
         try:
+            import win32gui  # noqa: PLC0415
             region = get_window_region(hwnd)
             if region is None:
                 return {"error": "Impossible de récupérer les coordonnées de cette fenêtre."}
+            title = win32gui.GetWindowText(hwnd)
             config = self._config.get_all()
             config["mumu_region"] = region
+            config["window_title"] = title
             self._config.save(config)
             import threading  # noqa: PLC0415
             threading.Thread(target=show_region_highlight, args=(region,), daemon=True).start()

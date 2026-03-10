@@ -317,6 +317,28 @@ def main() -> None:
                 daemon=True,
             ).start()
 
+    # Reconnexion automatique à la fenêtre sauvegardée
+    def _auto_reconnect_window():
+        import time as _t
+        _t.sleep(2)  # attendre que le bureau soit chargé
+        try:
+            from tracker.capture.screen import find_window_by_title  # noqa: PLC0415
+            cfg = api._config.get_all()
+            saved_title = cfg.get("window_title")
+            if not saved_title:
+                return
+            region = find_window_by_title(saved_title)
+            if region is None:
+                logger.info("Fenêtre '%s' non trouvée au démarrage.", saved_title)
+                return
+            cfg["mumu_region"] = region
+            api._config.save(cfg)
+            logger.info("Fenêtre '%s' reconnectée automatiquement.", saved_title)
+        except Exception as e:
+            logger.warning("Auto-reconnexion fenêtre: %s", e)
+
+    threading.Thread(target=_auto_reconnect_window, name="auto-reconnect", daemon=True).start()
+
     # Polling MUMU 100ms + détection états combat (Stories 3.1, 3.2)
     detector = StateDetector()
     polling = PollingLoop(interval=0.1, config=api._config, detector=detector)

@@ -59,6 +59,32 @@ def list_all_windows() -> list:
     return found
 
 
+def find_window_by_title(title: str) -> dict | None:
+    """Cherche une fenêtre dont le titre correspond exactement et retourne sa région.
+
+    Utilisé au démarrage pour restaurer automatiquement la fenêtre sélectionnée.
+
+    Returns:
+        {"x", "y", "width", "height"} ou None si introuvable.
+    """
+    import win32gui  # noqa: PLC0415
+
+    result = [None]
+
+    def _cb(hwnd, _):
+        if result[0] is not None:
+            return
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        if win32gui.GetWindowText(hwnd) == title:
+            result[0] = hwnd
+
+    win32gui.EnumWindows(_cb, None)
+    if result[0] is None:
+        return None
+    return get_window_region(result[0])
+
+
 def find_mumu_window() -> int | None:
     """Retourne le hwnd de la fenêtre MuMu Player ou None si non trouvée.
 

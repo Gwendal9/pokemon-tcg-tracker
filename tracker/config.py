@@ -15,6 +15,7 @@ DEFAULT_CONFIG_PATH = os.path.join(get_data_dir(), "config.json")
 
 CONFIG_DEFAULTS = {
     "mumu_region": None,
+    "window_title": None,
     "active_deck_id": None,
     "active_season": None,
     "theme": "ptcg-dark",
