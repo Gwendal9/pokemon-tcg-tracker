@@ -1,6 +1,7 @@
 # Pokemon TCG Tracker
 
-Suivi automatique des matchs ranked de Pokemon TCG Pocket via capture d'écran MuMu Player.
+Suivi automatique des matchs de Pokemon TCG Pocket via capture d'écran.
+Compatible avec n'importe quel émulateur Android (MuMu, BlueStacks, LDPlayer…).
 
 ---
 
@@ -58,62 +59,88 @@ Après le premier lancement réussi :
 
 Au premier lancement, va dans l'onglet **Config** :
 
-1. **Région MUMU** → Clique "Configurer la région MUMU" et sélectionne la zone de jeu
-2. **Deck actif** → Choisis le deck que tu joues actuellement
-3. **Test de capture** → Vérifie que la capture fonctionne
-4. **Calibration** → Pour chaque état (pré-queue, combat, fin de match), lance le jeu dans cet état et clique "Calibrer"
+1. **Fenêtre à capturer** → clique **"Choisir une fenêtre"** → une liste de toutes les fenêtres ouvertes s'affiche → clique sur ton émulateur. Un cadre rouge confirme la zone sélectionnée.
+   - Si ton émulateur n'apparaît pas, utilise **"Sélection manuelle"** pour dessiner la zone à la souris.
+2. **Crée tes decks** dans l'onglet **Decks** (bouton + en haut à droite)
+3. **Deck actif** → sélectionne le deck que tu joues actuellement
+4. **Test de capture** → vérifie que l'image de l'émulateur s'affiche correctement
+
+### Modèle de détection automatique
+
+La capture automatique (enregistrement des matchs sans intervention) nécessite un modèle ML (`state_classifier.pkl`) entraîné sur des captures de ton écran.
+
+**Si tu as reçu le fichier `state_classifier.pkl`** : place-le dans :
+```
+C:\Users\<ton nom>\AppData\Local\pokemon-tcg-tracker\data\state_classifier.pkl
+```
+
+**Sans le modèle** : tu peux toujours utiliser la saisie manuelle (bouton **+ Match**) et toutes les fonctionnalités de stats.
+
+---
+
+## Détection automatique du deck
+
+Le tracker détecte automatiquement quel deck tu joues depuis l'écran "C'est parti !" :
+
+1. Lance une partie — le tracker lit le nom et la couleur d'énergie de ton deck
+2. Va dans **Config → Détection de deck** : le deck détecté apparaît dans la liste
+3. Clique sur **"Lier"** et sélectionne le deck correspondant dans tes decks
+4. À partir de là, le deck s'active automatiquement au début de chaque match
+
+Tu peux aussi cliquer **"Tester maintenant"** si tu es sur l'écran "C'est parti !" pour voir ce que le tracker détecte.
 
 ---
 
 ## Fonctionnalités
 
 ### Dashboard
-| Fonctionnalité | Statut |
+| Fonctionnalité | Description |
 |---|---|
-| 4 KPI cards : winrate global, matchs joués, victoires/défaites, série en cours | ✅ |
-| Filtre par saison (persisté entre sessions) | ✅ |
-| Graphique winrate par deck (barres) | ✅ |
-| Courbe de tendance winrate cumulatif | ✅ |
-| Graphique top 10 adversaires (barres horizontales W/L) | ✅ |
-| Thème clair / sombre | ✅ |
+| KPI cards | Winrate global, matchs joués, victoires/défaites, série en cours |
+| Filtre par saison | Persisté entre sessions |
+| Graphiques | Winrate par deck, tendance cumulée, top 10 adversaires |
+| Thème | Clair / sombre |
 
 ### Historique
-| Fonctionnalité | Statut |
+| Fonctionnalité | Description |
 |---|---|
-| Table des matchs avec filtres (résultat, deck, adversaire) | ✅ |
-| Recherche textuelle par nom d'adversaire | ✅ |
-| Édition inline (résultat, adversaire, premier joueur) | ✅ |
-| Suppression de match avec confirmation | ✅ |
-| Export CSV (ouvre le fichier automatiquement) | ✅ |
+| Table des matchs | Filtres résultat, deck, adversaire, date, tags |
+| Recherche | Par adversaire, deck ou notes |
+| Édition inline | Résultat, adversaire, premier joueur, notes |
+| Colonnes | Date, résultat, deck, adversaire, premier, score, tours, dégâts, énergie |
+| Indicateurs | Badge "Abandon adv." si l'adversaire a abandonné, "Abandon" si tu as abandonné |
+| Export CSV | Ouvre le fichier automatiquement |
 
 ### Saisie & gestion
-| Fonctionnalité | Statut |
+| Fonctionnalité | Description |
 |---|---|
-| Saisie manuelle de match (+ bouton dans la navbar) | ✅ |
-| Gestion des decks : créer, renommer, supprimer (avec confirmation) | ✅ |
-| Panneau détail slide-in : stats adversaires, stats decks | ✅ |
-| Toast notification à chaque match enregistré | ✅ |
+| Saisie manuelle | Bouton **+ Match** dans la navbar |
+| Gestion des decks | Créer, renommer, supprimer |
+| Stats matchup | Clic sur un adversaire → stats détaillées |
+| Notifications | Toast à chaque match enregistré automatiquement |
 
-### Capture automatique
-| Fonctionnalité | Statut |
+### Capture automatique (nécessite le modèle ML)
+| Fonctionnalité | Description |
 |---|---|
-| Détection MuMu Player | ✅ |
-| Calibration des états de jeu (pré-queue / combat / fin de match) | ✅ |
-| Enregistrement automatique du résultat W/L en fin de match | ✅ (nécessite calibration) |
-| Détection automatique du deck adverse | ❌ Pas encore implémenté |
+| Détection d'émulateur | Fonctionne avec n'importe quel émulateur Android |
+| Détection des états | Pré-queue / en combat / fin de match |
+| Enregistrement automatique | Résultat W/L, adversaire, premier joueur, score, tours, dégâts |
+| Détection du deck | Lit le nom et le type d'énergie depuis l'écran "C'est parti !" |
+| Détection abandon | Détecte automatiquement "Votre adversaire a abandonné" |
 
 ### Système
-| Fonctionnalité | Statut |
+| Fonctionnalité | Description |
 |---|---|
-| Icône tray (hide on close, double-clic pour rouvrir) | ✅ |
-| Vérification de mise à jour au démarrage (bannière GitHub) | ✅ |
+| Icône tray | Hide on close, double-clic pour rouvrir |
+| Backup automatique | Sauvegarde de la base de données au démarrage |
+| Mises à jour | Vérifie automatiquement au démarrage, affiche une bannière |
 
 ---
 
 ## Saisie manuelle de match
 
 Clique sur **+ Match** dans la barre de navigation pour enregistrer un match sans capture automatique.
-Champs disponibles : résultat, deck joué, adversaire, premier à jouer, saison.
+Champs disponibles : résultat, deck joué, adversaire, premier à jouer, saison, notes.
 
 ---
 
@@ -126,13 +153,16 @@ git pull
 launch.bat
 ```
 
-L'application vérifie aussi automatiquement les mises à jour au démarrage et affiche une bannière si une nouvelle version est disponible sur GitHub.
+Si tu as installé via ZIP : retélécharge le ZIP et remplace les fichiers.
+Le dossier `data/` dans `AppData\Local\pokemon-tcg-tracker\` contient ta base de données — ne le supprime pas.
+
+L'application vérifie aussi automatiquement les mises à jour au démarrage et affiche une bannière si une nouvelle version est disponible.
 
 ---
 
-## Logs
+## Logs & debug
 
-Les logs sont dans `data/app.log`. En cas de bug, consulte ce fichier.
+Les logs sont dans `%LOCALAPPDATA%\pokemon-tcg-tracker\data\app.log`.
 
 Pour lancer en mode debug (logs détaillés) :
 
