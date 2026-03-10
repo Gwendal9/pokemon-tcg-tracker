@@ -18,11 +18,13 @@ import numpy as np
 from PIL import Image
 
 from tracker.capture.screen import capture_region_pil, find_mumu_window
-from tracker.paths import get_data_dir
+from tracker.paths import get_data_dir, get_project_root
 
 logger = logging.getLogger(__name__)
 
-_MODEL_PATH = os.path.join(get_data_dir(), "state_classifier.pkl")
+# Cherche d'abord dans models/ (distribué avec le repo), puis dans data/ (local)
+_MODEL_PATH = os.path.join(get_project_root(), "models", "state_classifier.pkl")
+_MODEL_PATH_LEGACY = os.path.join(get_data_dir(), "state_classifier.pkl")
 _IMG_SIZE = (160, 120)
 
 
@@ -114,19 +116,20 @@ class StateDetector:
         if self._model_loaded:
             return self._model
         self._model_loaded = True
-        if not os.path.exists(_MODEL_PATH):
-            logger.warning("Modèle ML absent : %s — détection désactivée.", _MODEL_PATH)
+        path = _MODEL_PATH if os.path.exists(_MODEL_PATH) else _MODEL_PATH_LEGACY
+        if not os.path.exists(path):
+            logger.warning("Modèle ML absent — détection désactivée.")
             return None
         try:
-            with open(_MODEL_PATH, "rb") as f:
+            with open(path, "rb") as f:
                 self._model = pickle.load(f)
-            logger.info("Modèle ML chargé : %s", _MODEL_PATH)
+            logger.info("Modèle ML chargé : %s", path)
         except Exception as e:
             logger.error("Erreur chargement modèle : %s", e)
         return self._model
 
     def is_model_available(self) -> bool:
-        return os.path.exists(_MODEL_PATH)
+        return os.path.exists(_MODEL_PATH) or os.path.exists(_MODEL_PATH_LEGACY)
 
     def reload_model(self):
         """Force le rechargement du modèle (utile après un réentraînement)."""

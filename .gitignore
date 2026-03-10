@@ -1,6 +1,5 @@
-# Runtime data — jamais commité (sauf le modèle ML distribué avec l'appli)
+# Runtime data — jamais commité
 data/
-!data/state_classifier.pkl
 
 # Dépendances JS vendorisées (téléchargées par launch.bat)
 ui/vendor/

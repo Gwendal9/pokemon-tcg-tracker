@@ -10,6 +10,10 @@ _PROJECT_ROOT = os.path.normpath(
 )
 
 
+def get_project_root() -> str:
+    return _PROJECT_ROOT
+
+
 def get_data_dir() -> str:
     env = os.environ.get("PTCG_DATA_DIR")
     if env:
