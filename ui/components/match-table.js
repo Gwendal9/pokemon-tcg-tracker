@@ -1,4 +1,16 @@
 // ui/components/match-table.js — Table historique des matchs (Story 4.4)
+var _MT_ENERGY_COLORS = {
+    'Électrique': '#F5D22D',
+    'Feu':        '#E05C30',
+    'Eau':        '#3E8FE0',
+    'Plante':     '#48B850',
+    'Combat':     '#D07030',
+    'Psy':        '#9870C0',
+    'Ténèbres':   '#504848',
+    'Acier':      '#8090A0',
+    'Incolore':   '#C0C0C0',
+};
+
 var matchTable = {
     _decksMap: {},   // {deck_id: deck_name}
     _matches:  [],   // liste brute (non filtrée)
@@ -98,10 +110,10 @@ var matchTable = {
             '<table class="table table-sm w-full">' +
             '<thead><tr>' +
             '<th>Date</th><th>Résultat</th><th>Deck</th>' +
-            '<th>Adversaire</th><th>Premier</th><th>Score</th><th>Tours</th><th>Dégâts</th><th></th>' +
+            '<th>Adversaire</th><th>Premier</th><th>Score</th><th>Tours</th><th>Dégâts</th><th>Énergie</th><th></th>' +
             '</tr></thead>' +
             '<tbody data-mt-tbody>' +
-            '<tr><td colspan="9" class="text-center opacity-50 py-4">Chargement…</td></tr>' +
+            '<tr><td colspan="10" class="text-center opacity-50 py-4">Chargement…</td></tr>' +
             '</tbody>' +
             '</table>' +
             '</div>' +
@@ -199,7 +211,7 @@ var matchTable = {
         var paginated = filtered.slice(start, start + pageSize);
 
         var html = paginated.length === 0
-            ? '<tr><td colspan="9" class="text-center opacity-50 py-6">Aucun match</td></tr>'
+            ? '<tr><td colspan="10" class="text-center opacity-50 py-6">Aucun match</td></tr>'
             : paginated.map(matchTable._rowHTML).join('');
 
         document.querySelectorAll('[data-mt-tbody]').forEach(function (tbody) {
@@ -237,11 +249,18 @@ var matchTable = {
         var deckName = m.deck_id
             ? (matchTable._decksMap[m.deck_id] || '#' + m.deck_id)
             : '—';
+        var abandonBadge = '';
+        if (m.conceded_by === 'opponent') {
+            abandonBadge = '<div><span class="badge badge-xs badge-info opacity-80" title="L\'adversaire a abandonné">Abandon adv.</span></div>';
+        } else if (m.conceded_by === 'self') {
+            abandonBadge = '<div><span class="badge badge-xs badge-warning opacity-80" title="Vous avez abandonné">Abandon</span></div>';
+        }
         return '<tr data-match-id="' + m.id + '">' +
             '<td class="text-xs opacity-60 whitespace-nowrap">' +
             matchTable._formatDate(m.captured_at) + '</td>' +
-            '<td>' + matchTable._resultBadge(m.result) + '</td>' +
+            '<td>' + matchTable._resultBadge(m.result) + abandonBadge + '</td>' +
             '<td class="text-sm">' + matchTable._esc(deckName) +
+            (m.match_type && m.match_type !== '?' ? '<div><span class="badge badge-xs badge-outline opacity-60">' + matchTable._esc(m.match_type) + '</span></div>' : '') +
             (m.tags ? '<div>' + m.tags.split(',').map(function (t) {
                 return '<span class="badge badge-xs badge-ghost mr-0.5">' + matchTable._esc(t.trim()) + '</span>';
             }).join('') + '</div>' : '') +
@@ -265,6 +284,7 @@ var matchTable = {
             '<td class="text-sm text-center">' +
             (m.damage_dealt != null ? m.damage_dealt : '<span class="opacity-30">—</span>') +
             '</td>' +
+            '<td class="text-sm text-center">' + matchTable._energyBadge(m.energy_type) + '</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-ghost btn-xs" ' +
             'onclick="matchTable._startEdit(this)" title="Modifier">✎</button>' +
@@ -302,11 +322,14 @@ var matchTable = {
             ' value="' + matchTable._esc(m.first_player || '') + '"' +
             ' class="input input-xs input-bordered w-20">' +
             '</td>' +
+            '<td>' + matchTable._energyBadge(m.energy_type) + '</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-success btn-xs" ' +
             'onclick="matchTable._saveEdit(this)" title="Enregistrer">✓</button>' +
             '<button class="btn btn-ghost btn-xs" ' +
             'onclick="matchTable._render()" title="Annuler">✕</button>' +
+            '<button class="btn btn-ghost btn-xs opacity-60" title="Marquer abandon (moi)" ' +
+            'onclick="matchTable._toggleConcede(' + m.id + ')">Abandon</button>' +
             '</td>' +
             '</tr>';
     },
@@ -355,7 +378,7 @@ var matchTable = {
         var matchId = tr.getAttribute('data-match-id');
         var confirmHTML =
             '<tr data-match-id="' + matchId + '" data-confirming-delete="1">' +
-            '<td colspan="5" class="text-sm opacity-70">Supprimer ce match ?</td>' +
+            '<td colspan="6" class="text-sm opacity-70">Supprimer ce match ?</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-error btn-xs" ' +
             'onclick="matchTable._confirmDelete(this)">Oui</button>' +
@@ -380,6 +403,12 @@ var matchTable = {
     // Erreur
     // -------------------------------------------------------------------------
 
+    _toggleConcede: function (matchId) {
+        window.dispatchEvent(new CustomEvent('match-concede-requested', {
+            detail: { match_id: matchId }
+        }));
+    },
+
     _setPage: function (p) {
         matchTable._page = p;
         matchTable._render();
@@ -394,9 +423,18 @@ var matchTable = {
     _renderError: function (msg) {
         document.querySelectorAll('[data-mt-tbody]').forEach(function (tbody) {
             tbody.innerHTML =
-                '<tr><td colspan="9" class="text-center text-error py-4">' +
+                '<tr><td colspan="10" class="text-center text-error py-4">' +
                 matchTable._esc(msg || 'Erreur de chargement') + '</td></tr>';
         });
+    },
+
+    _energyBadge: function (energyType) {
+        if (!energyType || energyType === '?') return '<span class="opacity-20">—</span>';
+        var color = _MT_ENERGY_COLORS[energyType] || '#888';
+        return '<span style="display:inline-flex;align-items:center;gap:3px;">' +
+            '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>' +
+            '<span class="text-xs opacity-70">' + matchTable._esc(energyType) + '</span>' +
+            '</span>';
     },
 
     // -------------------------------------------------------------------------

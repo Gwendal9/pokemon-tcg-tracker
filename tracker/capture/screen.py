@@ -11,6 +11,54 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def list_all_windows() -> list:
+    """Retourne toutes les fenêtres top-level visibles avec titre, dimensions, hwnd.
+
+    Filtre : visibles, non-iconifiées, taille > 100x100, exclut le tracker.
+    Triées par aire décroissante (les grandes fenêtres d'abord).
+
+    Returns:
+        Liste de {"hwnd": int, "title": str, "width": int, "height": int}.
+    """
+    import ctypes    # noqa: PLC0415
+    import win32gui  # noqa: PLC0415
+
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
+    found = []
+
+    def _enum_cb(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        if win32gui.IsIconic(hwnd):
+            return
+        title = win32gui.GetWindowText(hwnd)
+        if not title:
+            return
+        if "tracker" in title.lower():
+            return
+        try:
+            l, t, r, b = win32gui.GetWindowRect(hwnd)
+            w, h = r - l, b - t
+            if w < 100 or h < 100:
+                return
+            found.append({"hwnd": hwnd, "title": title, "width": w, "height": h, "_area": w * h})
+        except Exception:
+            pass
+
+    win32gui.EnumWindows(_enum_cb, None)
+    found.sort(key=lambda c: c["_area"], reverse=True)
+    for item in found:
+        del item["_area"]
+    return found
+
+
 def find_mumu_window() -> int | None:
     """Retourne le hwnd de la fenêtre MuMu Player ou None si non trouvée.
 
@@ -113,6 +161,24 @@ def auto_detect_mumu_region() -> dict | None:
     logger.info("auto_detect: fallback MuMu  %dx%d @ (%d,%d)",
                 best["width"], best["height"], best["x"], best["y"])
     return {"x": best["x"], "y": best["y"], "width": best["width"], "height": best["height"]}
+
+
+def get_window_region(hwnd: int) -> dict | None:
+    """Retourne les coordonnées écran d'une fenêtre par son hwnd.
+
+    Returns:
+        {"x", "y", "width", "height"} ou None si introuvable.
+    """
+    import win32gui  # noqa: PLC0415
+
+    try:
+        l, t, r, b = win32gui.GetWindowRect(hwnd)
+        w, h = r - l, b - t
+        if w < 50 or h < 50:
+            return None
+        return {"x": l, "y": t, "width": w, "height": h}
+    except Exception:
+        return None
 
 
 def show_region_highlight(region: dict, duration: float = 2.5) -> None:

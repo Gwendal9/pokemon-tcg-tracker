@@ -19,6 +19,7 @@ from tracker.config import ConfigManager
 from tracker.capture.screen import (
     capture_region, capture_region_pil,
     select_region_interactive, auto_detect_mumu_region, show_region_highlight,
+    list_all_windows, get_window_region,
 )
 from tracker.paths import get_data_dir
 
@@ -112,6 +113,30 @@ class TrackerAPI:
             return {"ok": True, "region": region}
         except Exception as e:
             logger.error("auto_detect_region: %s", e)
+            return {"error": str(e)}
+
+    def list_windows(self) -> list:
+        """Retourne toutes les fenêtres visibles pour sélection manuelle de la région."""
+        try:
+            return list_all_windows()
+        except Exception as e:
+            logger.error("list_windows: %s", e)
+            return {"error": str(e)}
+
+    def select_window_as_region(self, hwnd: int) -> dict:
+        """Sélectionne une fenêtre par son hwnd comme région de capture et affiche le cadre rouge."""
+        try:
+            region = get_window_region(hwnd)
+            if region is None:
+                return {"error": "Impossible de récupérer les coordonnées de cette fenêtre."}
+            config = self._config.get_all()
+            config["mumu_region"] = region
+            self._config.save(config)
+            import threading  # noqa: PLC0415
+            threading.Thread(target=show_region_highlight, args=(region,), daemon=True).start()
+            return {"ok": True, "region": region}
+        except Exception as e:
+            logger.error("select_window_as_region: %s", e)
             return {"error": str(e)}
 
     def start_region_selection(self) -> dict:
@@ -371,6 +396,73 @@ class TrackerAPI:
             return {"ok": ok}
         except Exception as e:
             logger.error("label_sample: %s", e)
+            return {"error": str(e)}
+
+    # -------------------------------------------------------------------------
+    # Test détection deck depuis l'écran actuel
+    # -------------------------------------------------------------------------
+
+    def test_deck_detection(self) -> dict:
+        """Capture l'écran actuel et retourne la détection du deck (nom + énergie)."""
+        try:
+            from tracker.capture.ocr import OcrPipeline  # noqa: PLC0415
+            region = self._config.get_all().get("mumu_region")
+            if not region:
+                return {"error": "Région non configurée"}
+            img = capture_region_pil(region)
+            if img is None:
+                return {"error": "Capture échouée"}
+            ocr = OcrPipeline()
+            data = ocr.extract_prequeue_data(img)
+            return data
+        except Exception as e:
+            logger.error("test_deck_detection: %s", e)
+            return {"error": str(e)}
+
+    # -------------------------------------------------------------------------
+    # Deck detection mappings
+    # -------------------------------------------------------------------------
+
+    def get_deck_mappings(self) -> list:
+        """Retourne tous les mappings de détection de deck."""
+        try:
+            return self._models.get_deck_mappings()
+        except Exception as e:
+            logger.error("get_deck_mappings: %s", e)
+            return {"error": str(e)}
+
+    def save_deck_mapping(self, mapping_id: int, deck_id: int) -> dict:
+        """Confirme un mapping : associe deck_id à une détection."""
+        try:
+            ok = self._models.save_deck_mapping(mapping_id, deck_id)
+            return {"ok": ok}
+        except Exception as e:
+            logger.error("save_deck_mapping: %s", e)
+            return {"error": str(e)}
+
+    def delete_deck_mapping(self, mapping_id: int) -> dict:
+        """Supprime un mapping de détection."""
+        try:
+            ok = self._models.delete_deck_mapping(mapping_id)
+            return {"ok": ok}
+        except Exception as e:
+            logger.error("delete_deck_mapping: %s", e)
+            return {"error": str(e)}
+
+    def mark_match_conceded(self, match_id: int) -> dict:
+        """Bascule le flag conceded_by='self' sur un match (toggle)."""
+        try:
+            with self._db_lock:
+                matches = self._models.get_matches()
+                m = next((x for x in matches if x["id"] == match_id), None)
+                if m is None:
+                    return {"error": "Match introuvable"}
+                current = m.get("conceded_by")
+                new_val = None if current == "self" else "self"
+                self._models.update_match_field(match_id, "conceded_by", new_val)
+            return {"ok": True, "conceded_by": new_val}
+        except Exception as e:
+            logger.error("mark_match_conceded: %s", e)
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------

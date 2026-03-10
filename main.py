@@ -118,11 +118,77 @@ def main() -> None:
     # OCR pipeline + état partagé (Story 3.3)
     ocr_pipeline = OcrPipeline()
 
+    import difflib as _difflib
+
     class _OcrState:
-        prequeue_img = None
-        pending_match = None
+        prequeue_img        = None
+        prequeue_data       = {}  # {match_type, deck_name, energy_type}
+        pending_match       = None
+        opponent_conceded   = False
+        _abandon_watch_stop = None  # threading.Event pour stopper le watcher
 
     ocr_state = _OcrState()
+
+    def _find_deck_id_by_name(deck_name: str, energy_type: str, fallback_id) -> int | None:
+        """Cherche le deck_id pour une détection de deck.
+
+        Priorité :
+        1. Mapping confirmé en DB (detected_name + energy_type).
+        2. Correspondance floue sur le nom (difflib).
+        3. fallback_id (deck actif dans la config).
+        """
+        if not deck_name or deck_name == "?":
+            return fallback_id
+        try:
+            # 1. Mapping confirmé
+            mapped_id = api._models.find_deck_by_detection(deck_name, energy_type or "?")
+            if mapped_id is not None:
+                logger.info("Deck via mapping confirmé: '%s' → id=%s", deck_name, mapped_id)
+                return mapped_id
+            # 2. Correspondance floue
+            decks = api._models.get_decks()
+            names = [d["name"] for d in decks]
+            close = _difflib.get_close_matches(deck_name, names, n=1, cutoff=0.5)
+            if close:
+                for d in decks:
+                    if d["name"] == close[0]:
+                        logger.info("Deck détecté (fuzzy): '%s' → '%s' (id=%s)",
+                                    deck_name, d["name"], d["id"])
+                        return d["id"]
+        except Exception as e:
+            logger.warning("_find_deck_id_by_name: %s", e)
+        return fallback_id
+
+    def _watch_for_abandon(stop_event):
+        """Thread : détecte 'Votre adversaire a abandonné' pendant IN_COMBAT."""
+        import time as _time
+        import numpy as np  # noqa: PLC0415
+        while not stop_event.is_set():
+            _time.sleep(2)
+            if polling.state != CombatState.IN_COMBAT:
+                break
+            region = api._config.get_all().get("mumu_region")
+            if not region:
+                continue
+            img = capture_region_pil(region)
+            if img is None:
+                continue
+            try:
+                w, h = img.size
+                # Vérification rapide : zone centrale très blanche = dialogue overlay
+                center = img.crop((int(0.1*w), int(0.3*h), int(0.9*w), int(0.7*h)))
+                arr = np.asarray(center.convert("L"), dtype=float) / 255.
+                if arr.mean() < 0.80:
+                    continue
+                # Confirmation OCR : chercher "abandonné"
+                results = ocr_pipeline._read_text(center)
+                text = " ".join(t for (_, t, c) in results if c > 0.35).lower()
+                if "abandonn" in text:
+                    ocr_state.opponent_conceded = True
+                    logger.info("Abandon adversaire confirmé par OCR")
+                    break
+            except Exception as e:
+                logger.debug("_watch_for_abandon tick: %s", e)
 
     def on_state_changed(prev_state, new_state):
         config_data = api._config.get_all()
@@ -130,11 +196,32 @@ def main() -> None:
         if not region:
             return
         if new_state == CombatState.PRE_QUEUE:
+            ocr_state.opponent_conceded = False
+            if ocr_state._abandon_watch_stop:
+                ocr_state._abandon_watch_stop.set()
             ocr_state.prequeue_img = capture_region_pil(region)
+            if ocr_state.prequeue_img:
+                ocr_state.prequeue_data = ocr_pipeline.extract_prequeue_data(ocr_state.prequeue_img)
+            # Enregistrer la détection dans la table mappings (non confirmé)
+            deck_name   = ocr_state.prequeue_data.get("deck_name", "?")
+            energy_type = ocr_state.prequeue_data.get("energy_type", "?")
+            if deck_name and deck_name != "?":
+                try:
+                    api._models.upsert_deck_detection(deck_name, energy_type)
+                except Exception as _e:
+                    logger.warning("upsert_deck_detection: %s", _e)
+        elif new_state == CombatState.IN_COMBAT:
+            stop_event = threading.Event()
+            ocr_state._abandon_watch_stop = stop_event
+            threading.Thread(target=_watch_for_abandon, args=(stop_event,), daemon=True).start()
         elif new_state == CombatState.END_SCREEN:
+            if ocr_state._abandon_watch_stop:
+                ocr_state._abandon_watch_stop.set()
             active_deck_id = config_data.get("active_deck_id")
-            deck_id = ocr_pipeline.extract_deck_from_prequeue(
-                ocr_state.prequeue_img, active_deck_id
+            deck_id = _find_deck_id_by_name(
+                ocr_state.prequeue_data.get("deck_name"),
+                ocr_state.prequeue_data.get("energy_type", "?"),
+                active_deck_id,
             )
             # L'écran de stats n'apparaît qu'après le clic sur "Touchez pour continuer"
             # On lance la capture dans un thread séparé pour ne pas bloquer le polling
@@ -179,7 +266,10 @@ def main() -> None:
                     elif ml_outcome == "lose":
                         match_data["result"] = "L"
 
-                match_data["deck_id"] = deck_id
+                match_data["deck_id"]      = deck_id
+                match_data["match_type"]   = ocr_state.prequeue_data.get("match_type")
+                match_data["energy_type"]  = ocr_state.prequeue_data.get("energy_type")
+                match_data["conceded_by"]  = "opponent" if ocr_state.opponent_conceded else None
                 logger.info(
                     "Match OCR extrait: result=%s opponent=%s first=%s turns=%s pts=%s/%s dmg=%s",
                     match_data.get("result"),

@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 # Whitelist des champs modifiables via update_match_field.
 # Empêche toute injection SQL par nom de champ.
-ALLOWED_MATCH_FIELDS = {"result", "opponent", "first_player", "season", "notes", "tags"}
+ALLOWED_MATCH_FIELDS = {"result", "opponent", "first_player", "season", "notes", "tags",
+                        "energy_type", "conceded_by"}
 
 
 class Models:
@@ -84,8 +85,9 @@ class Models:
             cursor = conn.execute(
                 """INSERT INTO matches
                    (deck_id, result, opponent, first_player, season, captured_at, raw_ocr_data,
-                    notes, tags, turns_played, player_points, opponent_points, damage_dealt)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    notes, tags, turns_played, player_points, opponent_points, damage_dealt,
+                    match_type, energy_type, conceded_by)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     match_data.get("deck_id"),
                     match_data.get("result", "?"),
@@ -100,6 +102,9 @@ class Models:
                     match_data.get("player_points"),
                     match_data.get("opponent_points"),
                     match_data.get("damage_dealt"),
+                    match_data.get("match_type"),
+                    match_data.get("energy_type"),
+                    match_data.get("conceded_by"),
                 ),
             )
             conn.commit()
@@ -279,6 +284,94 @@ class Models:
                 "best_win_streak": best_streak,
                 "top_deck": top_deck,
             }
+        finally:
+            conn.close()
+
+    # -------------------------------------------------------------------------
+    # Deck detection mappings
+    # -------------------------------------------------------------------------
+
+    def upsert_deck_detection(self, detected_name: str, energy_type: str) -> dict:
+        """Insère ou incrémente une détection de deck. Retourne la ligne."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM deck_detection_mappings WHERE detected_name = ? AND (energy_type = ? OR energy_type IS NULL)",
+                (detected_name, energy_type),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE deck_detection_mappings SET seen_count = seen_count + 1, energy_type = ? WHERE id = ?",
+                    (energy_type, row["id"]),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM deck_detection_mappings WHERE id = ?", (row["id"],)
+                ).fetchone()
+            else:
+                cursor = conn.execute(
+                    "INSERT INTO deck_detection_mappings (detected_name, energy_type) VALUES (?, ?)",
+                    (detected_name, energy_type),
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT * FROM deck_detection_mappings WHERE id = ?", (cursor.lastrowid,)
+                ).fetchone()
+            return dict(row)
+        finally:
+            conn.close()
+
+    def get_deck_mappings(self) -> list:
+        """Retourne tous les mappings (confirmés et en attente), triés par vus en dernier."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """SELECT m.*, d.name AS deck_name
+                   FROM deck_detection_mappings m
+                   LEFT JOIN decks d ON m.deck_id = d.id
+                   ORDER BY m.confirmed DESC, m.seen_count DESC"""
+            ).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    def save_deck_mapping(self, mapping_id: int, deck_id: int) -> bool:
+        """Confirme un mapping : associe un deck_id à une détection."""
+        conn = self._connect()
+        try:
+            cursor = conn.execute(
+                "UPDATE deck_detection_mappings SET deck_id = ?, confirmed = 1 WHERE id = ?",
+                (deck_id, mapping_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def delete_deck_mapping(self, mapping_id: int) -> bool:
+        """Supprime un mapping."""
+        conn = self._connect()
+        try:
+            cursor = conn.execute(
+                "DELETE FROM deck_detection_mappings WHERE id = ?", (mapping_id,)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
+    def find_deck_by_detection(self, detected_name: str, energy_type: str) -> Optional[int]:
+        """Cherche un deck_id confirmé pour une détection donnée."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """SELECT deck_id FROM deck_detection_mappings
+                   WHERE confirmed = 1 AND deck_id IS NOT NULL
+                   AND detected_name = ? AND (energy_type = ? OR energy_type IS NULL)
+                   LIMIT 1""",
+                (detected_name, energy_type),
+            ).fetchone()
+            return row["deck_id"] if row else None
         finally:
             conn.close()
 

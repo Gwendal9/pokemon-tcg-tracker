@@ -204,7 +204,21 @@ window.addEventListener('config-load-requested', async function () {
 
 window.addEventListener('config-region-auto-requested', async function () {
     try {
-        const result = await window.pywebview.api.auto_detect_region();
+        const windows = await window.pywebview.api.list_windows();
+        if (windows && windows.error) {
+            window.dispatchEvent(new CustomEvent('config-error', { detail: { message: windows.error } }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('windows-list-result', { detail: { windows } }));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
+window.addEventListener('window-select-requested', async function (e) {
+    try {
+        const hwnd = e.detail && e.detail.hwnd;
+        const result = await window.pywebview.api.select_window_as_region(hwnd);
         if (result && result.error) {
             window.dispatchEvent(new CustomEvent('config-error', { detail: { message: result.error } }));
             return;
@@ -228,6 +242,54 @@ window.addEventListener('config-region-select-requested', async function () {
     } catch (err) {
         window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
     }
+});
+
+// ---------------------------------------------------------------------------
+// Deck mappings bridges
+// ---------------------------------------------------------------------------
+
+window.addEventListener('deck-mappings-load-requested', async function () {
+    try {
+        const [mappings, decks] = await Promise.all([
+            window.pywebview.api.get_deck_mappings(),
+            window.pywebview.api.get_decks(),
+        ]);
+        window.dispatchEvent(new CustomEvent('deck-mappings-loaded', { detail: { mappings, decks } }));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur chargement mappings' } }));
+    }
+});
+
+window.addEventListener('deck-mapping-save-requested', async function (e) {
+    try {
+        const { mapping_id, deck_id } = e.detail || {};
+        const result = await window.pywebview.api.save_deck_mapping(mapping_id, deck_id);
+        if (result && result.error) {
+            window.dispatchEvent(new CustomEvent('config-error', { detail: { message: result.error } }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
+window.addEventListener('deck-mapping-delete-requested', async function (e) {
+    try {
+        const { mapping_id } = e.detail || {};
+        await window.pywebview.api.delete_deck_mapping(mapping_id);
+        window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
+window.addEventListener('match-concede-requested', async function (e) {
+    try {
+        const { match_id } = e.detail || {};
+        await window.pywebview.api.mark_match_conceded(match_id);
+        window.dispatchEvent(new CustomEvent('match-updated'));
+    } catch (err) {}
 });
 
 // ---------------------------------------------------------------------------

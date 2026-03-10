@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(get_data_dir(), "tracker.db")
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 8
 
 _MIGRATIONS = {
     2: "ALTER TABLE matches ADD COLUMN notes TEXT",
@@ -24,6 +24,9 @@ _MIGRATIONS = {
         "ALTER TABLE matches ADD COLUMN opponent_points INTEGER",
     ],
     5: "ALTER TABLE matches ADD COLUMN damage_dealt INTEGER",
+    6: "ALTER TABLE matches ADD COLUMN match_type TEXT",
+    7: "ALTER TABLE matches ADD COLUMN energy_type TEXT",
+    8: "ALTER TABLE matches ADD COLUMN conceded_by TEXT",
 }
 
 _CREATE_DECKS = """
@@ -55,6 +58,17 @@ CREATE TABLE IF NOT EXISTS schema_version (
 );
 """
 
+_CREATE_DECK_MAPPINGS = """
+CREATE TABLE IF NOT EXISTS deck_detection_mappings (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    detected_name TEXT NOT NULL,
+    energy_type   TEXT,
+    deck_id       INTEGER REFERENCES decks(id) ON DELETE SET NULL,
+    seen_count    INTEGER DEFAULT 1,
+    confirmed     INTEGER DEFAULT 0
+);
+"""
+
 _CREATE_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_matches_deck    ON matches(deck_id);",
     "CREATE INDEX IF NOT EXISTS idx_matches_season  ON matches(season);",
@@ -79,6 +93,7 @@ class DatabaseManager:
             conn.execute(_CREATE_DECKS)
             conn.execute(_CREATE_MATCHES)
             conn.execute(_CREATE_SCHEMA_VERSION)
+            conn.execute(_CREATE_DECK_MAPPINGS)
             for idx_sql in _CREATE_INDEXES:
                 conn.execute(idx_sql)
 

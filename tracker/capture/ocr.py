@@ -34,9 +34,12 @@ class OcrPipeline:
 
     # Zones de lecture (fractions de l'image)
     # TOP    : bande haute — "Victoire !" / "Défaite..." / nom adversaire
-    # BOTTOM : tableau stats (gauche seulement pour éviter le texte de la carte)
-    _ZONE_TOP    = (0.0, 0.0,  1.0,  0.35)  # x0, y0, x1, y1
-    _ZONE_BOTTOM = (0.0, 0.67, 0.85, 0.95)  # écran de stats (après clic, pas de carte)
+    # BOTTOM : tableau stats (après clic, pas de carte)
+    # PREQUEUE_TYPE : "Match aléatoire" / "Match classé" etc.
+    # PREQUEUE_DECK : nom du deck sous la vignette
+    _ZONE_TOP           = (0.0, 0.0,  1.0,  0.35)
+    _ZONE_BOTTOM        = (0.0, 0.67, 0.85, 0.95)
+    _ZONE_PREQUEUE_TYPE = (0.0, 0.03, 1.0,  0.13)
 
     def extract_end_screen_data(self, img) -> dict:
         """Extrait les données de fin de combat depuis l'écran de résultat."""
@@ -85,11 +88,170 @@ class OcrPipeline:
             "raw_ocr_data":    raw_json,
         }
 
-    def extract_deck_from_prequeue(self, img, active_deck_id=None) -> int | None:
-        logger.debug(
-            "extract_deck_from_prequeue: fallback active_deck_id=%s", active_deck_id
+    def extract_prequeue_data(self, img) -> dict:
+        """Extrait le type de match, le nom du deck et le type d'énergie depuis l'écran de pré-combat.
+
+        Détection position-agnostique : cherche la bande colorée du cadre deck
+        sur toute la hauteur utile de l'image, indépendamment du layout.
+        """
+        w, h = img.size
+
+        # Type de match depuis la bannière haute
+        type_results = []
+        try:
+            type_crop = img.crop((0, int(0.03*h), w, int(0.13*h)))
+            type_results = self._read_text(type_crop)
+        except Exception as e:
+            logger.error("OCR prequeue type error: %s", e)
+        match_type = self._parse_match_type(type_results)
+
+        # Localisation libre du cadre deck
+        strip = self._find_deck_card_strip(img)
+        energy_type = strip["energy_type"] if strip else "?"
+
+        # Nom du deck : zone sous la bande colorée (décalage fixe ~17-27% de h)
+        deck_name = "?"
+        if strip:
+            name_y1 = strip["y_top"] + int(0.17 * h)
+            name_y2 = strip["y_top"] + int(0.28 * h)
+            name_y1 = min(name_y1, h - 1)
+            name_y2 = min(name_y2, h)
+            if name_y2 > name_y1:
+                name_crop = img.crop((int(0.10 * w), name_y1, int(0.90 * w), name_y2))
+                try:
+                    deck_results = self._read_text(name_crop)
+                    deck_name = self._parse_prequeue_deck_name(deck_results)
+                except Exception as e:
+                    logger.error("OCR deck name error: %s", e)
+
+        logger.info(
+            "Prequeue: type=%s deck=%s energy=%s strip=%s",
+            match_type, deck_name, energy_type,
+            {k: strip[k] for k in ("y_top", "y_bot", "hue_deg")} if strip else None,
         )
-        return active_deck_id
+        return {"match_type": match_type, "deck_name": deck_name, "energy_type": energy_type}
+
+    def _find_deck_card_strip(self, img) -> dict | None:
+        """Localise la bande colorée du cadre deck indépendamment de sa position.
+
+        Algorithme :
+        1. Recherche dans x=[18%,82%] y=[8%,78%] (exclut UI haut + boutons bas).
+        2. Calcule par ligne la fraction de pixels fortement saturés (sat > 0.40).
+        3. Prend la bande la plus basse (notre deck, toujours en bas de l'écran).
+        4. Étend la bande verticalement jusqu'à ce que la saturation chute.
+
+        Returns:
+            {"y_top", "y_bot", "hue_deg", "energy_type"} en pixels absolus, ou None.
+        """
+        import numpy as np  # noqa: PLC0415
+        try:
+            w, h = img.size
+            x1, x2 = int(0.18 * w), int(0.82 * w)
+            y1, y2 = int(0.08 * h), int(0.78 * h)
+
+            section = np.asarray(img.convert("RGB").crop((x1, y1, x2, y2)), dtype=float)
+            sh, sw = section.shape[:2]
+            if sh == 0 or sw == 0:
+                return None
+
+            r, g, b = section[:,:,0]/255., section[:,:,1]/255., section[:,:,2]/255.
+            mx = np.maximum(np.maximum(r, g), b)
+            mn = np.minimum(np.minimum(r, g), b)
+            # Fraction de pixels saturés par ligne (seuil sat > 0.40)
+            row_frac = np.where(mx > 0.15, (mx - mn) / mx, 0.)
+            row_frac = (row_frac > 0.40).mean(axis=1)
+
+            # Bande la plus basse avec ≥12% de pixels saturés
+            SAT_THRESHOLD = 0.12
+            best_row = -1
+            for i in range(sh - 1, -1, -1):
+                if row_frac[i] >= SAT_THRESHOLD:
+                    best_row = i
+                    break
+            if best_row == -1:
+                return None
+
+            # Étendre la bande complète vers le haut et le bas
+            ext = SAT_THRESHOLD * 0.5
+            y_top = best_row
+            while y_top > 0 and row_frac[y_top - 1] >= ext:
+                y_top -= 1
+            y_bot = best_row
+            while y_bot < sh - 1 and row_frac[y_bot + 1] >= ext:
+                y_bot += 1
+
+            # HSV de la bande pour classifier l'énergie
+            strip = section[y_top:y_bot + 1]
+            sr, sg, sb_ = strip[:,:,0]/255., strip[:,:,1]/255., strip[:,:,2]/255.
+            s_mx = np.maximum(np.maximum(sr, sg), sb_)
+            s_mn = np.minimum(np.minimum(sr, sg), sb_)
+            s_delta = s_mx - s_mn
+            s_sat = np.where(s_mx > 0, s_delta / s_mx, 0.)
+            s_val = s_mx
+
+            mask = s_sat > 0.35
+            if mask.sum() < 10:
+                return None
+
+            s_h = np.zeros_like(sr)
+            mr  = (s_delta > 0) & (s_mx == sr)
+            mg_ = (s_delta > 0) & (s_mx == sg)
+            mb  = (s_delta > 0) & (s_mx == sb_)
+            s_h[mr]  = ((sg[mr]  - sb_[mr])  / s_delta[mr])  % 6
+            s_h[mg_] = (sb_[mg_] - sr[mg_]) / s_delta[mg_]   + 2
+            s_h[mb]  = (sr[mb]   - sg[mb])  / s_delta[mb]    + 4
+            s_h /= 6.
+
+            hue = float(np.median(s_h[mask])) * 360.
+            val = float(np.median(s_val[mask]))
+
+            return {
+                "y_top":       y1 + y_top,
+                "y_bot":       y1 + y_bot,
+                "hue_deg":     round(hue, 1),
+                "energy_type": self._classify_energy_hue(hue, val),
+            }
+        except Exception as e:
+            logger.error("_find_deck_card_strip: %s", e)
+            return None
+
+    def _classify_energy_hue(self, hue: float, val: float) -> str:
+        """Mappe hue (0-360°) + valeur → type d'énergie Pokemon TCG."""
+        if val < 0.30:
+            return "Ténèbres"
+        if hue < 25 or hue > 340:
+            return "Feu"
+        if 25 <= hue <= 48:
+            return "Combat"
+        if 48 < hue <= 75:
+            return "Électrique"
+        if 75 < hue <= 160:
+            return "Plante"
+        if 160 < hue <= 255:
+            return "Eau"
+        if 255 < hue <= 340:
+            return "Psy"
+        return "?"
+
+    def _parse_match_type(self, ocr_results) -> str:
+        for (_, text, conf) in ocr_results:
+            if conf < CONFIDENCE_THRESHOLD:
+                continue
+            lower = text.lower().strip()
+            if "aléatoire" in lower or "aleatoire" in lower:
+                return "aléatoire"
+            if "classé" in lower or "classe" in lower or "compétitif" in lower:
+                return "classé"
+            if "entraîn" in lower or "entrainement" in lower or "solo" in lower:
+                return "entraînement"
+            if "événement" in lower or "evenement" in lower or "event" in lower:
+                return "événement"
+        return "?"
+
+    def _parse_prequeue_deck_name(self, ocr_results) -> str:
+        parts = [text.strip() for (_, text, conf) in ocr_results
+                 if conf >= CONFIDENCE_THRESHOLD and text.strip()]
+        return " ".join(parts) if parts else "?"
 
     # ------------------------------------------------------------------
     # EasyOCR

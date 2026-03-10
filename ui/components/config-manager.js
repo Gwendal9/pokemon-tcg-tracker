@@ -5,12 +5,30 @@
  * via détection automatique (win32) ou overlay tkinter manuel.
  */
 
+const _ENERGY_COLORS = {
+    'Électrique': '#F5D22D',
+    'Feu':        '#E05C30',
+    'Eau':        '#3E8FE0',
+    'Plante':     '#48B850',
+    'Combat':     '#D07030',
+    'Psy':        '#9870C0',
+    'Ténèbres':   '#504848',
+    'Acier':      '#8090A0',
+    'Incolore':   '#C0C0C0',
+};
+
 class ConfigManager {
     constructor() {
         this._regionDisplay = null;
         this._autoBtn = null;
         this._selectBtn = null;
         this._statusEl = null;
+        this._windowListEl = null;
+        this._mappingsList = null;
+        this._mappingsRefreshBtn = null;
+        this._deckTestBtn = null;
+        this._deckTestResult = null;
+        this._cachedDecks = [];
     }
 
     init() {
@@ -18,6 +36,11 @@ class ConfigManager {
         this._autoBtn = document.getElementById('config-region-auto-btn');
         this._selectBtn = document.getElementById('config-region-select-btn');
         this._statusEl = document.getElementById('config-status');
+        this._windowListEl = document.getElementById('config-window-list');
+        this._mappingsList = document.getElementById('config-deck-mappings-list');
+        this._mappingsRefreshBtn = document.getElementById('config-deck-mappings-refresh-btn');
+        this._deckTestBtn = document.getElementById('config-deck-test-btn');
+        this._deckTestResult = document.getElementById('config-deck-test-result');
 
         if (this._autoBtn) {
             this._autoBtn.addEventListener('click', () => this._handleAutoDetect());
@@ -25,18 +48,41 @@ class ConfigManager {
         if (this._selectBtn) {
             this._selectBtn.addEventListener('click', () => this._handleSelectRegion());
         }
+        if (this._mappingsRefreshBtn) {
+            this._mappingsRefreshBtn.addEventListener('click', () =>
+                window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'))
+            );
+        }
+        if (this._deckTestBtn) {
+            this._deckTestBtn.addEventListener('click', () => this._handleDeckTest());
+        }
 
         window.addEventListener('config-loaded', (e) => this._renderConfig(e.detail.config));
         window.addEventListener('config-region-selected', (e) => {
             this._renderConfig(e.detail.config);
+            this._hideWindowList();
             this._setStatus('Région sauvegardée. Un cadre rouge confirme la zone détectée.', 'success');
         });
         window.addEventListener('config-error', (e) => {
             this._setStatus(e.detail.message, 'error');
             this._setBtnsDisabled(false);
         });
+        window.addEventListener('windows-list-result', (e) => {
+            this._setBtnsDisabled(false);
+            this._renderWindowList(e.detail.windows);
+        });
+        window.addEventListener('deck-mappings-loaded', (e) => {
+            this._cachedDecks = e.detail.decks || [];
+            this._renderMappings(e.detail.mappings || []);
+        });
+        window.addEventListener('tab-changed', (e) => {
+            if (e.detail === 'config') {
+                window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'));
+            }
+        });
 
         this._loadConfig();
+        window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'));
     }
 
     _loadConfig() {
@@ -44,15 +90,50 @@ class ConfigManager {
     }
 
     _handleAutoDetect() {
-        this._setStatus('Détection de la fenêtre MuMu en cours…', 'info');
+        this._setStatus('Récupération des fenêtres ouvertes…', 'info');
         this._setBtnsDisabled(true);
+        this._hideWindowList();
         window.dispatchEvent(new CustomEvent('config-region-auto-requested'));
     }
 
     _handleSelectRegion() {
-        this._setStatus('Overlay de sélection en cours… Dessinez un rectangle autour de MUMU.', 'info');
+        this._setStatus('Overlay de sélection en cours… Dessinez un rectangle autour de la fenêtre.', 'info');
         this._setBtnsDisabled(true);
+        this._hideWindowList();
         window.dispatchEvent(new CustomEvent('config-region-select-requested'));
+    }
+
+    _renderWindowList(windows) {
+        if (!this._windowListEl) return;
+        if (!windows || windows.length === 0) {
+            this._setStatus('Aucune fenêtre détectée. Vérifiez que l\'émulateur est ouvert.', 'error');
+            return;
+        }
+        this._setStatus('Cliquez sur la fenêtre à capturer :', 'info');
+        this._windowListEl.innerHTML = '';
+        const list = document.createElement('div');
+        list.className = 'flex flex-col gap-1';
+        windows.forEach((win) => {
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-sm btn-ghost justify-start text-left border border-base-300 hover:border-primary';
+            btn.innerHTML = `<span class="font-medium truncate max-w-xs">${this._escHtml(win.title)}</span>`
+                + `<span class="ml-auto text-xs opacity-50 shrink-0">${win.width}×${win.height}</span>`;
+            btn.addEventListener('click', () => {
+                this._setStatus(`Sélection de "${win.title}"…`, 'info');
+                this._hideWindowList();
+                window.dispatchEvent(new CustomEvent('window-select-requested', { detail: { hwnd: win.hwnd } }));
+            });
+            list.appendChild(btn);
+        });
+        this._windowListEl.appendChild(list);
+        this._windowListEl.style.display = 'block';
+    }
+
+    _hideWindowList() {
+        if (this._windowListEl) {
+            this._windowListEl.style.display = 'none';
+            this._windowListEl.innerHTML = '';
+        }
     }
 
     _renderConfig(config) {
@@ -81,6 +162,95 @@ class ConfigManager {
         this._statusEl.textContent = msg;
         this._statusEl.className = 'config-status config-status--' + type;
         this._statusEl.style.display = 'block';
+    }
+
+    async _handleDeckTest() {
+        if (this._deckTestResult) {
+            this._deckTestResult.textContent = 'Détection en cours…';
+            this._deckTestResult.style.display = 'block';
+        }
+        try {
+            const result = await window.pywebview.api.test_deck_detection();
+            if (!this._deckTestResult) return;
+            if (result && result.error) {
+                this._deckTestResult.textContent = 'Erreur : ' + result.error;
+            } else {
+                const name = result.deck_name || '?';
+                const energy = result.energy_type || '?';
+                const color = _ENERGY_COLORS[energy] || '#888';
+                const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>`;
+                this._deckTestResult.innerHTML = `Deck détecté : <strong>${this._escHtml(name)}</strong> ${dot}${this._escHtml(energy)}`;
+                // Actualiser la liste
+                window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'));
+            }
+        } catch (e) {
+            if (this._deckTestResult) this._deckTestResult.textContent = 'Erreur inattendue';
+        }
+    }
+
+    _renderMappings(mappings) {
+        if (!this._mappingsList) return;
+        if (!mappings.length) {
+            this._mappingsList.innerHTML = '<p class="text-sm opacity-40">Aucune détection enregistrée.</p>';
+            return;
+        }
+        const decks = this._cachedDecks;
+        let html = '';
+        mappings.forEach((m) => {
+            const energyColor = _ENERGY_COLORS[m.energy_type] || '#888';
+            const energyDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${energyColor};margin-right:5px;vertical-align:middle;"></span>`;
+            const seenBadge = `<span class="badge badge-xs badge-ghost opacity-50 ml-1">${m.seen_count}x</span>`;
+            const confirmedBadge = m.confirmed
+                ? '<span class="badge badge-xs badge-success ml-1">Lié</span>'
+                : '<span class="badge badge-xs badge-warning ml-1">En attente</span>';
+
+            let deckOptions = '<option value="">— Ignorer —</option>';
+            decks.forEach((d) => {
+                const sel = m.deck_id === d.id ? ' selected' : '';
+                deckOptions += `<option value="${d.id}"${sel}>${this._escHtml(d.name)}</option>`;
+            });
+
+            html += `<div class="flex items-center gap-2 p-2 rounded border border-base-300 bg-base-100 flex-wrap" data-mapping-id="${m.id}">
+                <span class="text-sm font-medium flex-1 min-w-0 truncate">
+                    ${energyDot}${this._escHtml(m.detected_name)}
+                    ${m.energy_type && m.energy_type !== '?' ? `<span class="text-xs opacity-50">(${m.energy_type})</span>` : ''}
+                    ${seenBadge}${confirmedBadge}
+                </span>
+                <select class="select select-xs select-bordered" data-mapping-deck-select="${m.id}">
+                    ${deckOptions}
+                </select>
+                <button class="btn btn-xs btn-primary" data-mapping-save="${m.id}">Lier</button>
+                <button class="btn btn-xs btn-ghost text-error" data-mapping-delete="${m.id}">✕</button>
+            </div>`;
+        });
+        this._mappingsList.innerHTML = html;
+
+        // Bind save buttons
+        this._mappingsList.querySelectorAll('[data-mapping-save]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mappingId = parseInt(btn.getAttribute('data-mapping-save'));
+                const sel = this._mappingsList.querySelector(`[data-mapping-deck-select="${mappingId}"]`);
+                const deckId = sel ? parseInt(sel.value) : null;
+                if (!deckId) return;
+                window.dispatchEvent(new CustomEvent('deck-mapping-save-requested', {
+                    detail: { mapping_id: mappingId, deck_id: deckId }
+                }));
+            });
+        });
+
+        // Bind delete buttons
+        this._mappingsList.querySelectorAll('[data-mapping-delete]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mappingId = parseInt(btn.getAttribute('data-mapping-delete'));
+                window.dispatchEvent(new CustomEvent('deck-mapping-delete-requested', {
+                    detail: { mapping_id: mappingId }
+                }));
+            });
+        });
+    }
+
+    _escHtml(str) {
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 }
 

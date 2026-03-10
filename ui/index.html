@@ -143,13 +143,34 @@
                 <div id="config-region-display" class="font-mono text-sm opacity-70 mb-2"></div>
                 <div class="flex gap-2 flex-wrap">
                     <button id="config-region-auto-btn" class="btn btn-sm btn-primary">
-                        Détecter automatiquement
+                        Choisir une fenêtre
                     </button>
                     <button id="config-region-select-btn" class="btn btn-sm btn-outline">
                         Sélection manuelle
                     </button>
                 </div>
                 <p id="config-status" class="text-sm mt-2" style="display:none;"></p>
+                <div id="config-window-list" class="mt-3" style="display:none;"></div>
+            </div>
+
+            <!-- Détection de deck -->
+            <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Détection de deck</h3>
+                <p class="text-sm opacity-60 mb-3">
+                    Les decks détectés automatiquement apparaissent ici. Associez chaque nom détecté à votre deck pour activer la sélection automatique au début de chaque match.
+                </p>
+                <div id="config-deck-mappings-list" class="flex flex-col gap-2 mb-2">
+                    <p class="text-sm opacity-40">Aucune détection enregistrée.</p>
+                </div>
+                <div class="flex gap-2 mt-1">
+                    <button id="config-deck-mappings-refresh-btn" class="btn btn-xs btn-ghost opacity-60">
+                        Actualiser
+                    </button>
+                    <button id="config-deck-test-btn" class="btn btn-xs btn-outline">
+                        Tester maintenant
+                    </button>
+                </div>
+                <p id="config-deck-test-result" class="text-sm mt-2 font-mono opacity-70" style="display:none;"></p>
             </div>
 
             <!-- Deck actif -->
