@@ -117,7 +117,7 @@ class OcrPipeline:
         deck_name = "?"
         if strip:
             name_y1 = int(0.64 * h)
-            name_y2 = int(0.85 * h)
+            name_y2 = int(0.81 * h)  # 0.81 plutôt que 0.85 : exclut "C'est parti !" (y≈83%)
             if name_y2 > name_y1:
                 name_crop = img.crop((int(0.05 * w), name_y1, int(0.95 * w), name_y2))
                 try:
@@ -131,6 +131,34 @@ class OcrPipeline:
             match_type, deck_name, energy_type,
             {k: strip[k] for k in ("y_top", "y_bot", "hue_deg")} if strip else None,
         )
+
+        # Sauvegarde image debug avec bande surlignée
+        try:
+            from PIL import ImageDraw, ImageFont  # noqa: PLC0415
+            from tracker.paths import get_data_dir  # noqa: PLC0415
+            dbg = img.convert("RGB").copy()
+            draw = ImageDraw.Draw(dbg, "RGBA")
+            iw, ih = dbg.size
+            if strip:
+                yt, yb = strip["y_top"], strip["y_bot"]
+                draw.rectangle((0, yt, iw, yb), outline=(255, 0, 0, 255), width=3)
+                draw.rectangle((0, yt, iw, yb), fill=(255, 0, 0, 60))
+            # Zone nom du deck
+            draw.rectangle(
+                (int(0.05*iw), int(0.64*ih), int(0.95*iw), int(0.81*ih)),
+                outline=(0, 200, 0, 255), width=2,
+            )
+            label = f"energy={energy_type}  hue={strip['hue_deg']}  deck={deck_name}  type={match_type}" if strip else f"NO STRIP  deck={deck_name}"
+            draw.rectangle((0, 0, iw, 22), fill=(0, 0, 0, 180))
+            try:
+                font = ImageFont.load_default()
+            except Exception:
+                font = None
+            draw.text((4, 4), label, fill=(255, 255, 255), font=font)
+            dbg.save(get_data_dir() + "/debug_prequeue.png")
+        except Exception as _de:
+            logger.debug("debug_prequeue save: %s", _de)
+
         return {"match_type": match_type, "deck_name": deck_name, "energy_type": energy_type}
 
     def _find_deck_card_strip(self, img) -> dict | None:
@@ -193,8 +221,37 @@ class OcrPipeline:
             if not bands:
                 return None
 
-            # Bande du HAUT = indicateur d'énergie (valide dans les deux layouts)
-            top_band_start, top_band_end = bands[0]
+            MIN_START = int(0.04 * sh)
+
+            # Stratégie deux zones — priorité zone2 (deck joueur) sur zone1 :
+            #
+            # Zone 2 — deck du JOUEUR (y≈46-68% abs)
+            #   Rows : 55% → fin de section
+            #   Prioritaire : en solo, le panneau de règles adverse est en haut
+            #   (zone1) et le deck du joueur est en bas (zone2). En prenant zone2
+            #   en premier on évite de lire la couleur du deck adverse.
+            #   La bande cyan de l'UI (y≈53% section) est évitée car zone2 démarre
+            #   à 55%.
+            #
+            # Zone 1 — fallback uniquement si zone2 vide
+            #   Rows : MIN_START → 38% de section
+            #   Critère : bande haute (≥ 20px) = grande bannière colorée
+            zone1_end   = int(0.38 * sh)
+            zone2_start = int(0.55 * sh)
+
+            z2_bands = [(bs, be) for bs, be in bands
+                        if bs >= zone2_start and (be - bs) >= 5]
+            z1_bands = [(bs, be) for bs, be in bands
+                        if bs >= MIN_START and be <= zone1_end and (be - bs) >= 20]
+
+            if z2_bands:
+                # Prendre la bande la plus haute (hauteur max) en zone2 :
+                # évite les petits artefacts de bordure au profit du vrai bloc deck
+                top_band_start, top_band_end = max(z2_bands, key=lambda b: b[1] - b[0])
+            elif z1_bands:
+                top_band_start, top_band_end = z1_bands[0]
+            else:
+                return None
             strip = section[top_band_start:top_band_end + 1]
 
             sr, sg, sb_ = strip[:,:,0]/255., strip[:,:,1]/255., strip[:,:,2]/255.
@@ -217,23 +274,51 @@ class OcrPipeline:
             s_h[mb]  = (sr[mb]   - sg[mb])  / s_delta[mb]    + 4
             s_h /= 6.
 
-            hue = float(np.median(s_h[mask])) * 360.
+            # Moyenne circulaire (évite le biais du rouge qui straddle 0°/360°)
+            h_rad = s_h[mask] * 2 * np.pi
+            hue = float(np.degrees(np.arctan2(np.sin(h_rad).mean(), np.cos(h_rad).mean())) % 360)
             val = float(np.median(s_val[mask]))
+            sat = float(np.median(s_sat[mask]))
+
+            # Variance circulaire pour détecter l'Incolore (multicolore)
+            hue_std = float(np.degrees(np.sqrt(-2 * np.log(
+                np.clip(np.abs(np.exp(1j * h_rad).mean()), 1e-9, 1)
+            ))))
 
             return {
                 "y_top":       y1 + top_band_start,
                 "y_bot":       y1 + top_band_end,
                 "hue_deg":     round(hue, 1),
-                "energy_type": self._classify_energy_hue(hue, val),
+                "energy_type": self._classify_energy_hue(hue, val, sat, hue_std),
             }
         except Exception as e:
             logger.error("_find_deck_card_strip: %s", e)
             return None
 
-    def _classify_energy_hue(self, hue: float, val: float) -> str:
-        """Mappe hue (0-360°) + valeur → type d'énergie Pokemon TCG."""
+    def _classify_energy_hue(self, hue: float, val: float, sat: float = 0.5,
+                             hue_std: float = 0.) -> str:
+        """Mappe hue (0-360°) + valeur + saturation → type d'énergie Pokemon TCG.
+
+        Types et couleurs dans PTCG Pocket :
+          Rouge       → Feu        (hue  0-25° ou >340°)
+          Marron      → Combat     (hue 25-48°)
+          Jaune       → Électrique (hue 48-75°)
+          Vert        → Plante     (hue 75-160°)
+          Bleu        → Eau        (hue 160-255°)
+          Violet      → Psy        (hue 255-340°)
+          Noir/sombre → Obscurité  (val < 0.30)
+          Gris        → Acier      (sat < 0.15)
+          Multicolore → Incolore   (variance circulaire de teinte élevée)
+        """
+        # Incolore : arc-en-ciel — variance circulaire de teinte très élevée
+        if hue_std > 50:
+            return "Incolore"
+        # Obscurité : très sombre
         if val < 0.30:
-            return "Ténèbres"
+            return "Obscurité"
+        # Acier : gris (faible saturation, mais pas trop sombre)
+        if sat < 0.15:
+            return "Acier"
         if hue < 25 or hue > 340:
             return "Feu"
         if 25 <= hue <= 48:
@@ -268,7 +353,11 @@ class OcrPipeline:
         "activé", "désactivée", "activée", "règles", "compétitif",
         "match aléatoire", "ici, vous pouvez choisir votre mode de combat",
         "mode de combat", "et affronter le monde entier.",
+        "entamer le combat", "entamer le combat !", "entamer",
     }
+
+    # Mots individuels impossibles dans un nom de deck
+    _DECK_NAME_WORD_BLACKLIST = {"c'est", "cest", "parti", "parti!", "!"}
 
     def _parse_prequeue_deck_name(self, ocr_results) -> str:
         parts = []
@@ -280,10 +369,15 @@ class OcrPipeline:
                 continue
             if stripped.lower() in self._DECK_NAME_BLACKLIST:
                 continue
+            if stripped.lower() in self._DECK_NAME_WORD_BLACKLIST:
+                continue
             # Ignorer les chiffres seuls (numéros de deck : "01", "09", "21"…)
             if stripped.isdigit():
                 continue
             parts.append(stripped)
+        # Supprimer un éventuel "C'est parti" en queue (tokens répartis en fin de liste)
+        while parts and parts[-1].lower().rstrip("!").strip() in ("c'est", "cest", "parti", "c'est parti"):
+            parts.pop()
         return " ".join(parts) if parts else "?"
 
     # ------------------------------------------------------------------

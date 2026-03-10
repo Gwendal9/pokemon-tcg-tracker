@@ -6,7 +6,7 @@ var _MT_ENERGY_COLORS = {
     'Plante':     '#48B850',
     'Combat':     '#D07030',
     'Psy':        '#9870C0',
-    'Ténèbres':   '#504848',
+    'Obscurité':  '#504848',
     'Acier':      '#8090A0',
     'Incolore':   '#C0C0C0',
 };
@@ -378,7 +378,7 @@ var matchTable = {
         var matchId = tr.getAttribute('data-match-id');
         var confirmHTML =
             '<tr data-match-id="' + matchId + '" data-confirming-delete="1">' +
-            '<td colspan="6" class="text-sm opacity-70">Supprimer ce match ?</td>' +
+            '<td colspan="9" class="text-sm opacity-70 text-right pr-2">Supprimer ce match ?</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-error btn-xs" ' +
             'onclick="matchTable._confirmDelete(this)">Oui</button>' +

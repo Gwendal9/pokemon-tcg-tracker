@@ -1,32 +1,31 @@
 # Pokemon TCG Tracker
 
-Suivi automatique des matchs de Pokemon TCG Pocket via capture d'écran.
-Compatible avec n'importe quel émulateur Android (MuMu, BlueStacks, LDPlayer…).
+Suivi automatique des matchs **Pokemon TCG Pocket** via capture d'écran.
+Compatible avec tous les émulateurs Android (MuMu, BlueStacks, LDPlayer…).
 
 ---
 
 ## Prérequis
 
-- **Windows 10/11**
-- **Python 3.10 ou plus** → [python.org/downloads](https://www.python.org/downloads/)
-  - ⚠️ Coche **"Add Python to PATH"** lors de l'installation
-- **Git** (optionnel, pour les mises à jour) → [git-scm.com](https://git-scm.com)
+| | |
+|---|---|
+| **OS** | Windows 10 ou 11 |
+| **Python** | 3.10 ou plus — [télécharger](https://www.python.org/downloads/) · cocher **"Add Python to PATH"** |
+| **Git** | Optionnel, pour les mises à jour — [télécharger](https://git-scm.com) |
 
 ---
 
-## Installation & premier lancement
+## Installation
 
-### Option A — Télécharger le ZIP (sans Git)
+### Téléchargement ZIP (simple)
 
-1. Sur cette page GitHub, clique **Code → Download ZIP**
-2. Extrais le dossier où tu veux (ex: `C:\Pokemon TCG Tracker`)
-3. Double-clique sur **`launch.bat`**
-   - Il crée automatiquement l'environnement Python et installe les dépendances
-   - ⏳ La première fois prend 2 à 5 minutes
-4. L'icône du tracker apparaît dans la **barre des tâches système** (à côté de l'horloge)
-5. Double-clique sur l'icône pour ouvrir le dashboard
+1. Clique **Code → Download ZIP** sur cette page
+2. Extrais le dossier (ex. `C:\Pokemon TCG Tracker`)
+3. Double-clique **`launch.bat`** — installe automatiquement les dépendances
+   *(première fois : 2 à 5 minutes)*
+4. L'icône du tracker apparaît dans la **barre des tâches** (à côté de l'horloge)
 
-### Option B — Via Git (recommandé pour les mises à jour)
+### Via Git (recommandé pour les mises à jour)
 
 ```bat
 git clone https://github.com/Gwendal9/pokemon-tcg-tracker.git
@@ -34,133 +33,90 @@ cd pokemon-tcg-tracker
 launch.bat
 ```
 
----
-
-## Créer un raccourci Bureau
-
-Après le premier lancement réussi :
-
-1. Double-clique sur **`create_shortcut.bat`**
-2. Un raccourci **"Pokemon TCG Tracker"** apparaît sur ton Bureau
+> **Raccourci Bureau** — double-clique `create_shortcut.bat` après le premier lancement.
 
 ---
 
-## Lancer l'application
+## Utilisation
 
-- **Double-clique sur `launch.bat`** ou sur le raccourci Bureau
-- L'icône apparaît dans la barre des tâches système
-- Double-clique dessus → ouvre le dashboard
-- **Fermer la fenêtre** = réduit dans le tray (l'appli continue de tourner)
-- **Quitter** = clic droit sur l'icône → Quitter
+| Action | Comment |
+|---|---|
+| Ouvrir le dashboard | Double-clique sur l'icône dans le tray |
+| Réduire | Ferme la fenêtre (l'appli continue en arrière-plan) |
+| Quitter | Clic droit sur l'icône → **Quitter** |
 
 ---
 
 ## Configuration initiale
 
-Au premier lancement, va dans l'onglet **Config** :
+Ouvre l'onglet **Config** au premier lancement :
 
-1. **Fenêtre à capturer** → clique **"Choisir une fenêtre"** → une liste de toutes les fenêtres ouvertes s'affiche → clique sur ton émulateur. Un cadre rouge confirme la zone sélectionnée.
-   - Si ton émulateur n'apparaît pas, utilise **"Sélection manuelle"** pour dessiner la zone à la souris.
-2. **Crée tes decks** dans l'onglet **Decks** (bouton + en haut à droite)
-3. **Deck actif** → sélectionne le deck que tu joues actuellement
-4. **Test de capture** → vérifie que l'image de l'émulateur s'affiche correctement
+1. **Fenêtre à capturer** → clique **"Choisir une fenêtre"** → sélectionne ton émulateur dans la liste.
+   Un cadre rouge confirme la sélection. Si l'émulateur n'apparaît pas, utilise **"Sélection manuelle"** pour dessiner la zone.
+2. **Decks** → crée tes decks dans l'onglet **Decks** (bouton **+**)
+3. **Deck actif** → sélectionne le deck en cours
 
-### Modèle de détection automatique
-
-Le modèle ML (`models/state_classifier.pkl`) est inclus dans le téléchargement — aucune étape supplémentaire n'est nécessaire.
-
-**Sans le modèle** : tu peux toujours utiliser la saisie manuelle (bouton **+ Match**) et toutes les fonctionnalités de stats.
+Le modèle de détection (`models/state_classifier.pkl`) est **inclus dans le téléchargement** — aucune installation supplémentaire.
 
 ---
 
-## Détection automatique du deck
+## Capture automatique
 
-Le tracker détecte automatiquement quel deck tu joues depuis l'écran "C'est parti !" :
+Le tracker détecte en temps réel l'état du jeu et enregistre chaque match automatiquement :
 
-1. Lance une partie — le tracker lit le nom et la couleur d'énergie de ton deck
-2. Va dans **Config → Détection de deck** : le deck détecté apparaît dans la liste
-3. Clique sur **"Lier"** et sélectionne le deck correspondant dans tes decks
-4. À partir de là, le deck s'active automatiquement au début de chaque match
+- **File d'attente** → lit le nom du deck et le type d'énergie
+- **Fin de match** → lit le résultat, l'adversaire, le premier joueur, le score, les tours et les dégâts
+- **Abandon adverse** → détecté automatiquement
 
-Tu peux aussi cliquer **"Tester maintenant"** si tu es sur l'écran "C'est parti !" pour voir ce que le tracker détecte.
+### Associer un deck détecté
+
+1. Lance une partie — le tracker lit le nom et le type d'énergie de ton deck depuis l'écran de file d'attente
+2. Dans **Config → Détection de deck**, le deck détecté apparaît dans la liste
+3. Clique **"Lier"** et sélectionne le deck correspondant
+4. À partir de là, le deck s'active automatiquement à chaque match
 
 ---
 
 ## Fonctionnalités
 
 ### Dashboard
-| Fonctionnalité | Description |
-|---|---|
-| KPI cards | Winrate global, matchs joués, victoires/défaites, série en cours |
-| Filtre par saison | Persisté entre sessions |
-| Graphiques | Winrate par deck, tendance cumulée, top 10 adversaires |
-| Thème | Clair / sombre |
+- KPI : winrate, matchs joués, série en cours
+- Graphiques : winrate par deck, tendance, top adversaires
+- Filtre par saison · thème clair/sombre
 
 ### Historique
-| Fonctionnalité | Description |
-|---|---|
-| Table des matchs | Filtres résultat, deck, adversaire, date, tags |
-| Recherche | Par adversaire, deck ou notes |
-| Édition inline | Résultat, adversaire, premier joueur, notes |
-| Colonnes | Date, résultat, deck, adversaire, premier, score, tours, dégâts, énergie |
-| Indicateurs | Badge "Abandon adv." si l'adversaire a abandonné, "Abandon" si tu as abandonné |
-| Export CSV | Ouvre le fichier automatiquement |
+- Filtres : résultat, deck, adversaire, date, tags
+- Recherche globale (adversaire, deck, notes)
+- Édition inline des matchs
+- Colonnes : date · résultat · deck · adversaire · premier · score · tours · dégâts · énergie
+- Indicateurs d'abandon (adversaire ou soi-même)
+- Export CSV
 
-### Saisie & gestion
-| Fonctionnalité | Description |
-|---|---|
-| Saisie manuelle | Bouton **+ Match** dans la navbar |
-| Gestion des decks | Créer, renommer, supprimer |
-| Stats matchup | Clic sur un adversaire → stats détaillées |
-| Notifications | Toast à chaque match enregistré automatiquement |
-
-### Capture automatique (nécessite le modèle ML)
-| Fonctionnalité | Description |
-|---|---|
-| Détection d'émulateur | Fonctionne avec n'importe quel émulateur Android |
-| Détection des états | Pré-queue / en combat / fin de match |
-| Enregistrement automatique | Résultat W/L, adversaire, premier joueur, score, tours, dégâts |
-| Détection du deck | Lit le nom et le type d'énergie depuis l'écran "C'est parti !" |
-| Détection abandon | Détecte automatiquement "Votre adversaire a abandonné" |
-
-### Système
-| Fonctionnalité | Description |
-|---|---|
-| Icône tray | Hide on close, double-clic pour rouvrir |
-| Backup automatique | Sauvegarde de la base de données au démarrage |
-| Mises à jour | Vérifie automatiquement au démarrage, affiche une bannière |
-
----
-
-## Saisie manuelle de match
-
-Clique sur **+ Match** dans la barre de navigation pour enregistrer un match sans capture automatique.
-Champs disponibles : résultat, deck joué, adversaire, premier à jouer, saison, notes.
+### Saisie manuelle
+Bouton **+ Match** dans la navbar — résultat, deck, adversaire, premier joueur, saison, notes.
 
 ---
 
 ## Mise à jour
 
-Si tu as installé via Git :
-
+**Via Git :**
 ```bat
 git pull
 launch.bat
 ```
 
-Si tu as installé via ZIP : retélécharge le ZIP et remplace les fichiers.
-Le dossier `data/` dans `AppData\Local\pokemon-tcg-tracker\` contient ta base de données — ne le supprime pas.
+**Via ZIP :** retélécharge le ZIP et remplace les fichiers.
+Tes données sont dans `%LOCALAPPDATA%\pokemon-tcg-tracker\data\` — ne supprime pas ce dossier.
 
-L'application vérifie aussi automatiquement les mises à jour au démarrage et affiche une bannière si une nouvelle version est disponible.
+> Le tracker vérifie automatiquement les mises à jour au démarrage.
 
 ---
 
 ## Logs & debug
 
-Les logs sont dans `%LOCALAPPDATA%\pokemon-tcg-tracker\data\app.log`.
+Fichier de log : `%LOCALAPPDATA%\pokemon-tcg-tracker\data\app.log`
 
-Pour lancer en mode debug (logs détaillés) :
-
+Mode debug (logs détaillés) :
 ```bat
 set PTCG_DEBUG=1
 launch.bat
