@@ -240,17 +240,49 @@ def list_unlabeled() -> list[dict]:
     return result
 
 
+def capture_now(config) -> dict:
+    """Capture immédiatement l'écran et sauvegarde dans unlabeled/.
+
+    Args:
+        config: ConfigManager instance avec mumu_region configurée.
+
+    Returns:
+        {"filename": str} ou {"error": str}.
+    """
+    from tracker.capture.screen import capture_region_pil  # noqa: PLC0415
+
+    region = config.get_all().get("mumu_region") if config else None
+    if not region:
+        return {"error": "Aucune région configurée"}
+
+    img = capture_region_pil(region)
+    if img is None:
+        return {"error": "Capture échouée"}
+
+    os.makedirs(_UNLABELED_DIR, exist_ok=True)
+    label = guess_label(img)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+    filename = f"{ts}_manual_{label}.png"
+    path = os.path.join(_UNLABELED_DIR, filename)
+    try:
+        img.convert("RGB").save(path)
+        logger.info("Capture manuelle sauvegardée: %s", filename)
+        return {"filename": filename}
+    except Exception as e:
+        logger.error("capture_now: %s", e)
+        return {"error": str(e)}
+
+
 def label_sample(filename: str, label: str) -> bool:
     """Déplace filename de unlabeled/ vers detection_samples/{label}/.
 
     Args:
         filename: nom du fichier PNG dans unlabeled/.
-        label: 'pre_queue', 'in_combat', 'end_screen_win', 'end_screen_lose' ou 'delete'.
+        label: n'importe quelle chaîne (ex: 'pre_queue', 'deck', 'abandon_adversaire') ou 'delete'.
 
     Returns:
         True si succès.
     """
-    valid_labels = {"pre_queue", "in_combat", "end_screen_win", "end_screen_lose"}
     src = os.path.join(_UNLABELED_DIR, filename)
     if not os.path.isfile(src):
         logger.warning("label_sample: fichier introuvable %s", filename)
@@ -260,13 +292,15 @@ def label_sample(filename: str, label: str) -> bool:
         os.remove(src)
         return True
 
-    if label not in valid_labels:
+    # Nettoyer le label pour en faire un nom de dossier valide
+    safe_label = "".join(c if c.isalnum() or c in "_-" else "_" for c in label).strip("_")
+    if not safe_label:
         logger.warning("label_sample: label invalide %r", label)
         return False
 
-    dest_dir = os.path.join(_SAMPLES_DIR, label)
+    dest_dir = os.path.join(_SAMPLES_DIR, safe_label)
     os.makedirs(dest_dir, exist_ok=True)
     dest = os.path.join(dest_dir, filename)
     os.replace(src, dest)
-    logger.info("label_sample: %s → %s/", filename, label)
+    logger.info("label_sample: %s → %s/", filename, safe_label)
     return True

@@ -109,7 +109,8 @@ class OcrPipeline:
         strip = self._find_deck_card_strip(img)
         energy_type = strip["energy_type"] if strip else "?"
 
-        # Nom du deck : zone sous la bande colorée (décalage fixe ~17-27% de h)
+        # Nom du deck : zone sous la bande colorée
+        # La bande est en haut de la carte deck ; le nom est environ 17-28% de h en dessous du haut de la bande
         deck_name = "?"
         if strip:
             name_y1 = strip["y_top"] + int(0.17 * h)
@@ -135,7 +136,7 @@ class OcrPipeline:
         """Localise la bande colorée du cadre deck indépendamment de sa position.
 
         Algorithme :
-        1. Recherche dans x=[18%,82%] y=[8%,78%] (exclut UI haut + boutons bas).
+        1. Recherche dans x=[18%,82%] y=[8%,68%] (exclut UI haut + bouton C'est parti).
         2. Calcule par ligne la fraction de pixels fortement saturés (sat > 0.40).
         3. Prend la bande la plus basse (notre deck, toujours en bas de l'écran).
         4. Étend la bande verticalement jusqu'à ce que la saturation chute.
@@ -147,7 +148,7 @@ class OcrPipeline:
         try:
             w, h = img.size
             x1, x2 = int(0.18 * w), int(0.82 * w)
-            y1, y2 = int(0.08 * h), int(0.78 * h)
+            y1, y2 = int(0.08 * h), int(0.68 * h)
 
             section = np.asarray(img.convert("RGB").crop((x1, y1, x2, y2)), dtype=float)
             sh, sw = section.shape[:2]

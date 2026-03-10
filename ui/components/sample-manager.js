@@ -1,13 +1,16 @@
 /**
- * sample-manager.js — UI de capture automatique et labélisation.
+ * sample-manager.js — UI de capture manuelle/automatique et labélisation.
  */
 
 const SAMPLE_LABELS = [
-    { key: "pre_queue",       label: "File d'attente" },
-    { key: "in_combat",       label: "Combat" },
-    { key: "end_screen_win",  label: "Victoire" },
-    { key: "end_screen_lose", label: "Défaite" },
-    { key: "delete",          label: "Supprimer" },
+    { key: "pre_queue",          label: "File d'attente",     style: "btn-outline" },
+    { key: "in_combat",          label: "Combat",             style: "btn-outline" },
+    { key: "end_screen_win",     label: "Victoire",           style: "btn-outline" },
+    { key: "end_screen_lose",    label: "Défaite",            style: "btn-outline" },
+    { key: "deck",               label: "Deck",               style: "btn-outline btn-accent" },
+    { key: "abandon_adversaire", label: "Abandon adversaire", style: "btn-outline btn-warning" },
+    { key: "abandon_joueur",     label: "Abandon joueur",     style: "btn-outline btn-warning" },
+    { key: "delete",             label: "Supprimer",          style: "btn-outline btn-error" },
 ];
 
 class SampleManager {
@@ -18,6 +21,8 @@ class SampleManager {
         this._savedCount = null;
         this._unlabeledCount = null;
         this._gallery = null;
+        this._captureNowBtn = null;
+        this._captureNowStatus = null;
         this._pollInterval = null;
     }
 
@@ -28,19 +33,40 @@ class SampleManager {
         this._savedCount      = document.getElementById('sampling-saved-count');
         this._unlabeledCount  = document.getElementById('sampling-unlabeled-count');
         this._gallery         = document.getElementById('samples-gallery');
+        this._captureNowBtn   = document.getElementById('capture-now-btn');
+        this._captureNowStatus = document.getElementById('capture-now-status');
         const refreshBtn      = document.getElementById('sampling-refresh-btn');
 
-        if (this._startBtn)  this._startBtn.addEventListener('click', () => this._start());
-        if (this._stopBtn)   this._stopBtn.addEventListener('click',  () => this._stop());
-        if (refreshBtn)      refreshBtn.addEventListener('click', () => this._loadGallery());
+        if (this._startBtn)      this._startBtn.addEventListener('click', () => this._start());
+        if (this._stopBtn)       this._stopBtn.addEventListener('click',  () => this._stop());
+        if (refreshBtn)          refreshBtn.addEventListener('click', () => this._loadGallery());
+        if (this._captureNowBtn) this._captureNowBtn.addEventListener('click', () => this._captureNow());
 
-        // Rafraîchir le statut quand l'onglet devient actif
         window.addEventListener('tab-changed', (e) => {
             if (e.detail === 'samples') {
                 this._refreshStatus();
                 this._loadGallery();
             }
         });
+    }
+
+    async _captureNow() {
+        if (this._captureNowBtn) this._captureNowBtn.disabled = true;
+        if (this._captureNowStatus) this._captureNowStatus.textContent = 'Capture en cours…';
+        try {
+            const r = await window.pywebview.api.capture_now();
+            if (r && r.error) {
+                if (this._captureNowStatus) this._captureNowStatus.textContent = 'Erreur : ' + r.error;
+            } else {
+                if (this._captureNowStatus) this._captureNowStatus.textContent = 'Capture enregistrée. Labélise-la ci-dessous.';
+                await this._loadGallery();
+                await this._refreshStatus();
+            }
+        } catch (e) {
+            if (this._captureNowStatus) this._captureNowStatus.textContent = 'Erreur inattendue.';
+        } finally {
+            if (this._captureNowBtn) this._captureNowBtn.disabled = false;
+        }
     }
 
     async _start() {
@@ -92,7 +118,7 @@ class SampleManager {
         try {
             const s = await window.pywebview.api.get_sampling_status();
             if (!s || s.error) return;
-            if (this._savedCount)    this._savedCount.textContent    = s.saved_this_session;
+            if (this._savedCount)     this._savedCount.textContent     = s.saved_this_session;
             if (this._unlabeledCount) this._unlabeledCount.textContent = s.unlabeled_count;
             this._setRunning(s.running);
             if (!s.running) clearInterval(this._pollInterval);
@@ -132,7 +158,7 @@ class SampleManager {
             </p>
             <div class="flex flex-wrap gap-1">
                 ${SAMPLE_LABELS.map(l => `
-                    <button class="btn btn-xs ${l.key === 'delete' ? 'btn-error btn-outline' : 'btn-outline'}"
+                    <button class="btn btn-xs ${l.style}"
                             data-label="${l.key}">${l.label}</button>
                 `).join('')}
             </div>

@@ -388,6 +388,15 @@ class TrackerAPI:
             logger.error("get_unlabeled_samples: %s", e)
             return {"error": str(e)}
 
+    def capture_now(self) -> dict:
+        """Capture immédiatement l'écran et sauvegarde dans unlabeled/ pour labélisation."""
+        try:
+            from tracker.capture.sampler import capture_now  # noqa: PLC0415
+            return capture_now(self._config)
+        except Exception as e:
+            logger.error("capture_now: %s", e)
+            return {"error": str(e)}
+
     def label_sample(self, filename: str, label: str) -> dict:
         """Labélise une capture et la déplace dans le bon dossier."""
         try:
