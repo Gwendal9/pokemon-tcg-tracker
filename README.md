@@ -67,12 +67,7 @@ Au premier lancement, va dans l'onglet **Config** :
 
 ### Modèle de détection automatique
 
-La capture automatique (enregistrement des matchs sans intervention) nécessite un modèle ML (`state_classifier.pkl`) entraîné sur des captures de ton écran.
-
-**Si tu as reçu le fichier `state_classifier.pkl`** : place-le dans :
-```
-C:\Users\<ton nom>\AppData\Local\pokemon-tcg-tracker\data\state_classifier.pkl
-```
+Le modèle ML (`models/state_classifier.pkl`) est inclus dans le téléchargement — aucune étape supplémentaire n'est nécessaire.
 
 **Sans le modèle** : tu peux toujours utiliser la saisie manuelle (bouton **+ Match**) et toutes les fonctionnalités de stats.
 
