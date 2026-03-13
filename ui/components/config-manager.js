@@ -28,6 +28,8 @@ class ConfigManager {
         this._mappingsRefreshBtn = null;
         this._deckTestBtn = null;
         this._deckTestResult = null;
+        this._oppPokemonTestBtn = null;
+        this._oppPokemonTestResult = null;
         this._cachedDecks = [];
     }
 
@@ -41,6 +43,8 @@ class ConfigManager {
         this._mappingsRefreshBtn = document.getElementById('config-deck-mappings-refresh-btn');
         this._deckTestBtn = document.getElementById('config-deck-test-btn');
         this._deckTestResult = document.getElementById('config-deck-test-result');
+        this._oppPokemonTestBtn = document.getElementById('config-opp-pokemon-test-btn');
+        this._oppPokemonTestResult = document.getElementById('config-opp-pokemon-test-result');
 
         if (this._autoBtn) {
             this._autoBtn.addEventListener('click', () => this._handleAutoDetect());
@@ -55,6 +59,9 @@ class ConfigManager {
         }
         if (this._deckTestBtn) {
             this._deckTestBtn.addEventListener('click', () => this._handleDeckTest());
+        }
+        if (this._oppPokemonTestBtn) {
+            this._oppPokemonTestBtn.addEventListener('click', () => this._handleOppPokemonTest());
         }
 
         window.addEventListener('config-loaded', (e) => this._renderConfig(e.detail.config));
@@ -177,14 +184,55 @@ class ConfigManager {
             } else {
                 const name = result.deck_name || '?';
                 const energy = result.energy_type || '?';
+                const iconMap = {
+                    'Feu': 'vendor/energy/fire.png', 'Eau': 'vendor/energy/water.png',
+                    'Plante': 'vendor/energy/grass.png', 'Électrique': 'vendor/energy/lightning.png',
+                    'Psy': 'vendor/energy/psychic.png', 'Combat': 'vendor/energy/fighting.png',
+                    'Obscurité': 'vendor/energy/darkness.png', 'Acier': 'vendor/energy/metal.png',
+                    'Incolore': 'vendor/energy/colorless.png', 'Dragon': 'vendor/energy/dragon.png',
+                };
                 const color = _ENERGY_COLORS[energy] || '#888';
-                const dot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>`;
-                this._deckTestResult.innerHTML = `Deck détecté : <strong>${this._escHtml(name)}</strong> ${dot}${this._escHtml(energy)}`;
+                const iconSrc = iconMap[energy];
+                const energyHtml = iconSrc
+                    ? `<img src="${iconSrc}" alt="${this._escHtml(energy)}" title="${this._escHtml(energy)}" style="width:18px;height:18px;object-fit:contain;vertical-align:middle;margin-right:4px;" onerror="this.outerHTML='<span style=\\'display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;\\'></span>'">`
+                    : `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>`;
+                this._deckTestResult.innerHTML = `Deck détecté : <strong>${this._escHtml(name)}</strong> ${energyHtml}${this._escHtml(energy)}`;
                 // Actualiser la liste
                 window.dispatchEvent(new CustomEvent('deck-mappings-load-requested'));
             }
         } catch (e) {
             if (this._deckTestResult) this._deckTestResult.textContent = 'Erreur inattendue';
+        }
+    }
+
+    async _handleOppPokemonTest() {
+        if (this._oppPokemonTestResult) {
+            this._oppPokemonTestResult.textContent = 'Detection en cours…';
+            this._oppPokemonTestResult.style.display = 'block';
+        }
+        try {
+            const result = await window.pywebview.api.test_opponent_pokemon_detection();
+            if (!this._oppPokemonTestResult) return;
+            if (result && result.error) {
+                this._oppPokemonTestResult.textContent = 'Erreur : ' + result.error;
+                return;
+            }
+            const name = result.name || '(aucun)';
+            let html = `<strong>Pokemon detecte :</strong> ${this._escHtml(name)}<br>`;
+            if (result.zones) {
+                result.zones.forEach(z => {
+                    const texts = (z.results || []).map(r =>
+                        r.error ? `[err: ${r.error}]` : `"${r.text}" (${r.conf})`
+                    ).join(', ') || '(vide)';
+                    html += `<span class="text-xs opacity-60">[${z.label}] ${this._escHtml(texts)}</span><br>`;
+                });
+            }
+            if (result.debug_image) {
+                html += `<span class="text-xs opacity-40">Debug: ${this._escHtml(result.debug_image)}</span>`;
+            }
+            this._oppPokemonTestResult.innerHTML = html;
+        } catch (e) {
+            if (this._oppPokemonTestResult) this._oppPokemonTestResult.textContent = 'Erreur inattendue';
         }
     }
 
@@ -198,7 +246,11 @@ class ConfigManager {
         let html = '';
         mappings.forEach((m) => {
             const energyColor = _ENERGY_COLORS[m.energy_type] || '#888';
-            const energyDot = `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${energyColor};margin-right:5px;vertical-align:middle;"></span>`;
+            const _cfgIconMap = {'Feu':'vendor/energy/fire.png','Eau':'vendor/energy/water.png','Plante':'vendor/energy/grass.png','Électrique':'vendor/energy/lightning.png','Psy':'vendor/energy/psychic.png','Combat':'vendor/energy/fighting.png','Obscurité':'vendor/energy/darkness.png','Acier':'vendor/energy/metal.png','Incolore':'vendor/energy/colorless.png','Dragon':'vendor/energy/dragon.png'};
+            const energyIconSrc = _cfgIconMap[m.energy_type];
+            const energyDot = energyIconSrc
+                ? `<img src="${energyIconSrc}" alt="${m.energy_type}" title="${m.energy_type}" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:5px;" onerror="this.outerHTML='<span style=\\'display:inline-block;width:10px;height:10px;border-radius:50%;background:${energyColor};margin-right:5px;vertical-align:middle;\\'></span>'">`
+                : `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${energyColor};margin-right:5px;vertical-align:middle;"></span>`;
             const seenBadge = `<span class="badge badge-xs badge-ghost opacity-50 ml-1">${m.seen_count}x</span>`;
             const confirmedBadge = m.confirmed
                 ? '<span class="badge badge-xs badge-success ml-1">Lié</span>'
@@ -219,7 +271,10 @@ class ConfigManager {
                 <select class="select select-xs select-bordered" data-mapping-deck-select="${m.id}">
                     ${deckOptions}
                 </select>
-                <button class="btn btn-xs btn-primary" data-mapping-save="${m.id}">Lier</button>
+                ${m.confirmed
+                    ? `<button class="btn btn-xs btn-success opacity-60" data-mapping-save="${m.id}" disabled>✓ Lié</button>`
+                    : `<button class="btn btn-xs btn-primary" data-mapping-save="${m.id}">Lier</button>`
+                }
                 <button class="btn btn-xs btn-ghost text-error" data-mapping-delete="${m.id}">✕</button>
             </div>`;
         });
@@ -232,6 +287,20 @@ class ConfigManager {
                 const sel = this._mappingsList.querySelector(`[data-mapping-deck-select="${mappingId}"]`);
                 const deckId = sel ? parseInt(sel.value) : null;
                 if (!deckId) return;
+                // Animation immédiate
+                const row = this._mappingsList.querySelector(`[data-mapping-id="${mappingId}"]`);
+                if (row) {
+                    row.style.transition = 'background 0.3s';
+                    row.style.background = 'oklch(var(--su)/0.15)';
+                    setTimeout(() => { row.style.background = ''; }, 800);
+                    // Mettre à jour le badge et griser le bouton sans attendre le refresh
+                    const badge = row.querySelector('.badge-warning');
+                    if (badge) { badge.className = 'badge badge-xs badge-success ml-1'; badge.textContent = 'Lié'; }
+                    btn.textContent = '✓ Lié';
+                    btn.disabled = true;
+                    btn.classList.remove('btn-primary');
+                    btn.classList.add('btn-success', 'opacity-60');
+                }
                 window.dispatchEvent(new CustomEvent('deck-mapping-save-requested', {
                     detail: { mapping_id: mappingId, deck_id: deckId }
                 }));

@@ -8,6 +8,24 @@ var detailPanel = {
     _deckDetailId:     null,         // deck_id affiché dans la vue deck-detail
     _deckChart:        null,         // instance Chart.js active dans le panneau
 
+    _decksMap: {},  // deck_id → {name, energy_type}
+
+    _ICON_MAP: {
+        'Feu':'vendor/energy/fire.png','Eau':'vendor/energy/water.png',
+        'Plante':'vendor/energy/grass.png','Électrique':'vendor/energy/lightning.png',
+        'Psy':'vendor/energy/psychic.png','Combat':'vendor/energy/fighting.png',
+        'Obscurité':'vendor/energy/darkness.png','Acier':'vendor/energy/metal.png',
+        'Incolore':'vendor/energy/colorless.png','Dragon':'vendor/energy/dragon.png',
+    },
+
+    _energyIcon: function (energyType, size) {
+        size = size || 14;
+        if (!energyType || energyType === '?') return '';
+        var src = detailPanel._ICON_MAP[energyType];
+        if (!src) return '';
+        return '<img src="' + src + '" alt="' + energyType + '" title="' + energyType + '" style="width:' + size + 'px;height:' + size + 'px;object-fit:contain;display:inline-block;vertical-align:middle;margin-right:3px;">';
+    },
+
     init: function () {
         // Mise en cache des données au fil des events existants (aucun appel API en plus)
         window.addEventListener('stats-loaded', function (e) {
@@ -17,6 +35,9 @@ var detailPanel = {
 
         window.addEventListener('matches-loaded', function (e) {
             detailPanel._matches = (e.detail && e.detail.matches) ? e.detail.matches : [];
+            var decks = (e.detail && e.detail.decks) ? e.detail.decks : [];
+            detailPanel._decksMap = {};
+            decks.forEach(function (d) { detailPanel._decksMap[d.id] = d; });
             if (detailPanel._isOpen()) detailPanel._renderContent();
         });
 
@@ -169,7 +190,7 @@ var detailPanel = {
 
             html +=
                 '<tr>' +
-                '<td class="text-sm">' + detailPanel._esc(o.name) + '</td>' +
+                '<td class="text-sm"><span style="display:flex;align-items:center;gap:4px;">' + detailPanel._energyIcon(o.energy) + detailPanel._esc(o.name) + '</span></td>' +
                 '<td class="text-right text-sm">' + o.total + '</td>' +
                 '<td class="text-right text-sm">' + o.wins + '</td>' +
                 '<td class="text-right text-sm">' + o.losses + '</td>' +
@@ -190,13 +211,22 @@ var detailPanel = {
     _computeOpponents: function () {
         var map = {};
         detailPanel._matches.forEach(function (m) {
-            var opp = (m.opponent && m.opponent !== '?') ? m.opponent : '?';
-            if (!map[opp]) map[opp] = { name: opp, total: 0, wins: 0, losses: 0 };
+            var opp = (m.opponent_deck && m.opponent_deck.trim()) ? m.opponent_deck.trim() : null;
+            if (!opp) return;
+            if (!map[opp]) map[opp] = { name: opp, total: 0, wins: 0, losses: 0, energyCount: {} };
             map[opp].total++;
             if (m.result === 'W') map[opp].wins++;
             if (m.result === 'L') map[opp].losses++;
+            if (m.opponent_energy_type && m.opponent_energy_type !== '?') {
+                var ec = map[opp].energyCount;
+                ec[m.opponent_energy_type] = (ec[m.opponent_energy_type] || 0) + 1;
+            }
         });
-        return Object.values(map).sort(function (a, b) { return b.total - a.total; });
+        return Object.values(map).map(function (o) {
+            var ec = o.energyCount;
+            o.energy = Object.keys(ec).sort(function(a,b){return ec[b]-ec[a];})[0] || null;
+            return o;
+        }).sort(function (a, b) { return b.total - a.total; });
     },
 
     // -------------------------------------------------------------------------
@@ -233,11 +263,14 @@ var detailPanel = {
                 ? 'inherit'
                 : (d.winrate >= 50 ? colorWin : colorLoss);
 
+            var deckInfo   = detailPanel._decksMap[d.deck_id];
+            var deckEnergy = deckInfo ? deckInfo.energy_type : null;
             html +=
                 '<tr>' +
                 '<td class="text-sm">' +
-                '<button class="link link-hover text-sm"' +
+                '<button class="link link-hover text-sm flex items-center gap-1"' +
                 ' onclick="detailPanel._openDeckDetail(' + d.deck_id + ')">' +
+                detailPanel._energyIcon(deckEnergy) +
                 detailPanel._esc(d.deck_name) + '</button></td>' +
                 '<td class="text-right text-sm">' + d.total + '</td>' +
                 '<td class="text-right text-sm">' + d.wins + '</td>' +
@@ -476,7 +509,7 @@ var detailPanel = {
     _matchupHTML: function () {
         var opp     = detailPanel._matchupOpponent || '?';
         var matches = detailPanel._matches.filter(function (m) {
-            return (m.opponent || '?') === opp;
+            return (m.opponent_deck || m.opponent || '?') === opp;
         });
 
         var wins   = matches.filter(function (m) { return m.result === 'W'; }).length;

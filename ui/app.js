@@ -9,6 +9,8 @@
 
 // Saison active globale (null = toutes les saisons)
 window._ptcgSeason = null;
+// Filtre type de match (null = tous, "classé", "aléatoire", …)
+window._ptcgMatchType = null;
 
 window.addEventListener('pywebviewready', function () {
     // Navigation et thème (Story 4.1)
@@ -18,6 +20,9 @@ window.addEventListener('pywebviewready', function () {
     // Initialiser les composants UI existants
     if (typeof deckManager !== 'undefined') {
         deckManager.init();
+    }
+    if (typeof opponentArchetypeManager !== 'undefined') {
+        opponentArchetypeManager.init();
     }
     if (typeof configManager !== 'undefined') {
         configManager.init();
@@ -54,6 +59,9 @@ window.addEventListener('pywebviewready', function () {
     if (typeof chartOpponents !== 'undefined') {
         chartOpponents.init();
     }
+    if (typeof chartEnergy !== 'undefined') {
+        chartEnergy.init();
+    }
     if (typeof seasonStats !== 'undefined') {
         seasonStats.init();
     }
@@ -74,6 +82,17 @@ window.addEventListener('pywebviewready', function () {
         });
         window.dispatchEvent(new CustomEvent('active-season-load-requested'));
     }
+
+    // Filtre type de match — tous les selects [data-matchtype-filter] sont synchronisés
+    var _matchTypeSelects = document.querySelectorAll('[data-matchtype-filter]');
+    _matchTypeSelects.forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            window._ptcgMatchType = sel.value || null;
+            _matchTypeSelects.forEach(function (s) { s.value = sel.value; });
+            window.dispatchEvent(new CustomEvent('stats-load-requested'));
+            window.dispatchEvent(new CustomEvent('matches-load-requested'));
+        });
+    });
 
     // Désactiver les boutons région-dépendants par défaut (activés par config-loaded)
     var _captureBtn = document.getElementById('capture-test-btn');
@@ -135,7 +154,7 @@ function initThemeToggle() {
 
 window.addEventListener('deck-create-requested', async function (e) {
     try {
-        const result = await window.pywebview.api.create_deck(e.detail.name);
+        const result = await window.pywebview.api.create_deck(e.detail.name, e.detail.energy_type || null);
         if (result && result.error) {
             window.dispatchEvent(new CustomEvent('deck-error', { detail: { message: result.error } }));
             return;
@@ -148,7 +167,7 @@ window.addEventListener('deck-create-requested', async function (e) {
 
 window.addEventListener('deck-update-requested', async function (e) {
     try {
-        const result = await window.pywebview.api.update_deck(e.detail.deck_id, e.detail.name);
+        const result = await window.pywebview.api.update_deck(e.detail.deck_id, e.detail.name, e.detail.energy_type || null);
         if (result && result.error) {
             window.dispatchEvent(new CustomEvent('deck-error', { detail: { message: result.error } }));
             return;
@@ -293,6 +312,93 @@ window.addEventListener('match-concede-requested', async function (e) {
 });
 
 // ---------------------------------------------------------------------------
+// Opponent deck archetypes bridges
+// ---------------------------------------------------------------------------
+
+window.addEventListener('opponent-archetypes-load-requested', async function () {
+    try {
+        const archetypes = await window.pywebview.api.get_opponent_archetypes();
+        if (archetypes && archetypes.error) {
+            window.dispatchEvent(new CustomEvent('config-error', { detail: { message: archetypes.error } }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('opponent-archetypes-loaded', {
+            detail: { archetypes: Array.isArray(archetypes) ? archetypes : [] }
+        }));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur chargement archetypes' } }));
+    }
+});
+
+window.addEventListener('opponent-archetype-save-requested', async function (e) {
+    try {
+        const { id, name, key_pokemon, notes } = e.detail || {};
+        const result = await window.pywebview.api.save_opponent_archetype(id || null, name, key_pokemon, notes || null);
+        if (result && result.error) {
+            window.dispatchEvent(new CustomEvent('config-error', { detail: { message: result.error } }));
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('opponent-archetypes-load-requested'));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
+window.addEventListener('opponent-archetype-delete-requested', async function (e) {
+    try {
+        const { id } = e.detail || {};
+        await window.pywebview.api.delete_opponent_archetype(id);
+        window.dispatchEvent(new CustomEvent('opponent-archetypes-load-requested'));
+    } catch (err) {
+        window.dispatchEvent(new CustomEvent('config-error', { detail: { message: 'Erreur inattendue' } }));
+    }
+});
+
+window.addEventListener('opponent-deck-confirm-requested', async function (e) {
+    try {
+        const { match_id, deck_name } = e.detail || {};
+        const result = await window.pywebview.api.confirm_opponent_deck(match_id, deck_name);
+        if (result && result.error) {
+            showToast('Erreur confirmation deck: ' + result.error, 'error');
+            return;
+        }
+        window.dispatchEvent(new CustomEvent('match-updated', { detail: { match_id } }));
+        window.dispatchEvent(new CustomEvent('matches-load-requested'));
+        showToast('Deck adverse confirmé : ' + deck_name, 'success');
+    } catch (err) {
+        showToast('Erreur inattendue', 'error');
+    }
+});
+
+window.addEventListener('opponent-deck-proposed', function (e) {
+    var d = e.detail;
+    var notif = document.getElementById('opponent-deck-notif');
+    if (!notif) {
+        notif = document.createElement('div');
+        notif.id = 'opponent-deck-notif';
+        notif.className = 'alert alert-info shadow-sm mb-2 text-sm';
+        var historyTab = document.getElementById('tab-history');
+        if (historyTab) historyTab.prepend(notif);
+    }
+    notif.innerHTML = '<span>Deck adverse probable : <strong>' + (d.deck_name || '') + '</strong> (' + d.score + '/' + d.total + ' Pokemon — ' + (d.matched || []).join(', ') + ')</span>' +
+        '<div class="flex gap-1 ml-auto">' +
+        '<button class="btn btn-xs btn-success" id="opponent-deck-notif-confirm">Confirmer</button>' +
+        '<button class="btn btn-xs btn-ghost" id="opponent-deck-notif-dismiss">Ignorer</button>' +
+        '</div>';
+    document.getElementById('opponent-deck-notif-confirm').addEventListener('click', function () {
+        window.dispatchEvent(new CustomEvent('opponent-deck-confirm-requested', {
+            detail: { match_id: d.match_id, deck_name: d.deck_name }
+        }));
+        var n = document.getElementById('opponent-deck-notif');
+        if (n) n.remove();
+    });
+    document.getElementById('opponent-deck-notif-dismiss').addEventListener('click', function () {
+        var n = document.getElementById('opponent-deck-notif');
+        if (n) n.remove();
+    });
+});
+
+// ---------------------------------------------------------------------------
 // Capture test bridge (Story 2.3)
 // ---------------------------------------------------------------------------
 
@@ -316,10 +422,9 @@ window.addEventListener('capture-test-requested', async function () {
 
 window.addEventListener('stats-load-requested', async function (e) {
     try {
-        var season = (e.detail && e.detail.season) || window._ptcgSeason || undefined;
-        var stats = season !== undefined
-            ? await window.pywebview.api.get_stats(season)
-            : await window.pywebview.api.get_stats();
+        var season    = (e.detail && e.detail.season) || window._ptcgSeason    || null;
+        var matchType = window._ptcgMatchType || null;
+        var stats = await window.pywebview.api.get_stats(season, matchType);
         if (stats && stats.error) {
             window.dispatchEvent(new CustomEvent('stats-error', { detail: { message: stats.error } }));
             return;
@@ -388,9 +493,10 @@ window.addEventListener('match-save-requested', async function (e) {
 
 window.addEventListener('matches-load-requested', async function () {
     try {
-        var _season = window._ptcgSeason || undefined;
+        var _season    = window._ptcgSeason    || null;
+        var _matchType = window._ptcgMatchType || null;
         const [matches, decks] = await Promise.all([
-            _season ? window.pywebview.api.get_matches(_season) : window.pywebview.api.get_matches(),
+            window.pywebview.api.get_matches(_season, _matchType),
             window.pywebview.api.get_decks(),
         ]);
         if (matches && matches.error) {

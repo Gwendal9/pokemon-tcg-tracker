@@ -49,20 +49,20 @@ class TrackerAPI:
             logger.error("get_decks: %s", e)
             return {"error": str(e)}
 
-    def create_deck(self, name: str) -> dict:
+    def create_deck(self, name: str, energy_type: str = None) -> dict:
         """Crée un deck. Retourne {"error": ...} si le nom est vide."""
         if not name or not name.strip():
             return {"error": "Le nom du deck ne peut pas être vide"}
         try:
-            return self._models.create_deck(name.strip())
+            return self._models.create_deck(name.strip(), energy_type or None)
         except Exception as e:
             logger.error("create_deck: %s", e)
             return {"error": str(e)}
 
-    def update_deck(self, deck_id: int, name: str) -> bool:
-        """Met à jour le nom d'un deck. Retourne True si succès."""
+    def update_deck(self, deck_id: int, name: str, energy_type: str = None) -> bool:
+        """Met à jour le nom et l'énergie d'un deck. Retourne True si succès."""
         try:
-            return self._models.update_deck(deck_id, name.strip())
+            return self._models.update_deck(deck_id, name.strip(), energy_type or None)
         except Exception as e:
             logger.error("update_deck: %s", e)
             return {"error": str(e)}
@@ -168,10 +168,10 @@ class TrackerAPI:
     # Stats (Epic 4 — Story 4.1)
     # -------------------------------------------------------------------------
 
-    def get_stats(self, season: str = None) -> dict:
+    def get_stats(self, season: str = None, match_type: str = None) -> dict:
         """Retourne les statistiques agrégées (winrate global + par deck)."""
         try:
-            return self._models.get_stats(season=season)
+            return self._models.get_stats(season=season, match_type=match_type or None)
         except Exception as e:
             logger.error("get_stats: %s", e)
             return {"error": str(e)}
@@ -215,10 +215,13 @@ class TrackerAPI:
             logger.error("get_seasons: %s", e)
             return {"error": str(e)}
 
-    def get_matches(self, season: str = None, deck_id: int = None) -> list:
+    def get_matches(self, season: str = None, match_type: str = None,
+                    deck_id: int = None) -> list:
         """Retourne l'historique des matchs."""
         try:
-            return self._models.get_matches(season=season, deck_id=deck_id)
+            return self._models.get_matches(
+                season=season, match_type=match_type or None, deck_id=deck_id,
+            )
         except Exception as e:
             logger.error("get_matches: %s", e)
             return {"error": str(e)}
@@ -415,7 +418,8 @@ class TrackerAPI:
     # -------------------------------------------------------------------------
 
     def test_deck_detection(self) -> dict:
-        """Capture l'écran actuel et retourne la détection du deck (nom + énergie)."""
+        """Capture l'écran actuel et retourne la détection du deck (nom + énergie).
+        Sauvegarde aussi la détection dans deck_detection_mappings si le nom est valide."""
         try:
             from tracker.capture.ocr import OcrPipeline  # noqa: PLC0415
             region = self._config.get_all().get("mumu_region")
@@ -426,9 +430,76 @@ class TrackerAPI:
                 return {"error": "Capture échouée"}
             ocr = OcrPipeline()
             data = ocr.extract_prequeue_data(img)
+            deck_name   = data.get("deck_name", "?")
+            energy_type = data.get("energy_type", "?")
+            if deck_name and deck_name != "?":
+                try:
+                    self._models.upsert_deck_detection(deck_name, energy_type)
+                except Exception as _e:
+                    logger.warning("test_deck_detection upsert: %s", _e)
             return data
         except Exception as e:
             logger.error("test_deck_detection: %s", e)
+            return {"error": str(e)}
+
+    def test_opponent_pokemon_detection(self) -> dict:
+        """Capture l'écran actuel et teste extract_active_opponent_pokemon.
+
+        Sauvegarde des crops debug pour chaque zone scannée.
+        Retourne {'name': str|None, 'zones': [{'label', 'results'}]}.
+        """
+        try:
+            from tracker.capture.ocr import OcrPipeline  # noqa: PLC0415
+            from tracker.paths import get_data_dir       # noqa: PLC0415
+            from PIL import ImageDraw                    # noqa: PLC0415
+            region = self._config.get_all().get("mumu_region")
+            if not region:
+                return {"error": "Région non configurée"}
+            img = capture_region_pil(region)
+            if img is None:
+                return {"error": "Capture échouée"}
+
+            ocr = OcrPipeline()
+            name = ocr.extract_active_opponent_pokemon(img)
+
+            # Sauvegarde crops debug pour chaque zone
+            data_dir = get_data_dir()
+            w, h = img.size
+            img_rgb = img.convert("RGB")
+            zones_debug = [
+                (0.38, 0.26, 0.88, 0.34, 5, "active_opp"),
+                (0.35, 0.21, 0.90, 0.30, 4, "active_opp_hi"),
+            ]
+            zone_results = []
+            for (x0, y0, x1, y1, scale, label) in zones_debug:
+                crop = img_rgb.crop((int(x0*w), int(y0*h), int(x1*w), int(y1*h)))
+                crop_up = crop.resize((crop.width*scale, crop.height*scale))
+                crop.save(f"{data_dir}/debug_opp_pokemon_{label}.png")
+                crop_up.save(f"{data_dir}/debug_opp_pokemon_{label}_up.png")
+                try:
+                    raw = ocr._read_text(crop_up)
+                    texts = [{"text": t, "conf": round(c, 3)} for (_, t, c) in raw]
+                except Exception as _e:
+                    texts = [{"error": str(_e)}]
+                zone_results.append({"label": label, "results": texts})
+
+            # Sauvegarde image annotée avec les zones
+            dbg = img_rgb.copy()
+            draw = ImageDraw.Draw(dbg, "RGBA")
+            colors = [(0, 200, 255, 60), (255, 165, 0, 60)]
+            for i, (x0, y0, x1, y1, _, label) in enumerate(zones_debug):
+                bx0, by0 = int(x0*w), int(y0*h)
+                bx1, by1 = int(x1*w), int(y1*h)
+                draw.rectangle((bx0, by0, bx1, by1), fill=colors[i],
+                                outline=colors[i][:3] + (255,), width=2)
+                draw.text((bx0 + 2, by0 + 2), label, fill=(255, 255, 255))
+            dbg.save(f"{data_dir}/debug_opp_pokemon_zones.png")
+
+            logger.info("test_opponent_pokemon_detection: name=%s", name)
+            return {"name": name, "zones": zone_results,
+                    "debug_image": f"{data_dir}/debug_opp_pokemon_zones.png"}
+        except Exception as e:
+            logger.error("test_opponent_pokemon_detection: %s", e)
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -478,6 +549,49 @@ class TrackerAPI:
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------
+    # Opponent deck archetypes
+    # -------------------------------------------------------------------------
+
+    def get_opponent_archetypes(self) -> list:
+        try:
+            return self._models.get_opponent_archetypes()
+        except Exception as e:
+            logger.error("get_opponent_archetypes: %s", e)
+            return {"error": str(e)}
+
+    def save_opponent_archetype(self, archetype_id, name: str, key_pokemon: str, notes: str = None) -> dict:
+        """Crée ou met à jour un archetype. key_pokemon: noms séparés par |"""
+        if not name or not name.strip():
+            return {"error": "Nom requis"}
+        if not key_pokemon or not key_pokemon.strip():
+            return {"error": "Au moins un Pokemon cle requis"}
+        try:
+            return self._models.save_opponent_archetype(
+                archetype_id or None, name.strip(), key_pokemon.strip(), (notes or "").strip() or None
+            )
+        except Exception as e:
+            logger.error("save_opponent_archetype: %s", e)
+            return {"error": str(e)}
+
+    def delete_opponent_archetype(self, archetype_id: int) -> dict:
+        try:
+            ok = self._models.delete_opponent_archetype(int(archetype_id))
+            return {"ok": ok}
+        except Exception as e:
+            logger.error("delete_opponent_archetype: %s", e)
+            return {"error": str(e)}
+
+    def confirm_opponent_deck(self, match_id: int, deck_name: str) -> dict:
+        """Confirme le deck adversaire pour un match."""
+        try:
+            with self._db_lock:
+                ok = self._models.update_match_field(int(match_id), "opponent_deck", deck_name)
+            return {"ok": ok}
+        except Exception as e:
+            logger.error("confirm_opponent_deck: %s", e)
+            return {"error": str(e)}
+
+    # -------------------------------------------------------------------------
     # Export CSV
     # -------------------------------------------------------------------------
 
@@ -503,12 +617,13 @@ class TrackerAPI:
             csv_path = _os.path.join(data_dir, "matches_export.csv")
             with open(csv_path, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.writer(f)
-                writer.writerow(["Date", "Résultat", "Deck", "Adversaire", "Premier", "Saison"])
+                writer.writerow(["Date", "Résultat", "Deck", "Deck adverse", "Pseudo adv.", "Premier", "Saison"])
                 for m in matches:
                     writer.writerow([
                         m.get("captured_at", ""),
                         m.get("result", ""),
                         decks.get(m.get("deck_id"), ""),
+                        m.get("opponent_deck", ""),
                         m.get("opponent", ""),
                         m.get("first_player", ""),
                         m.get("season", ""),

@@ -59,11 +59,40 @@ if not exist "%VENV_DIR%\Lib\site-packages\webview" (
 
 :: --- Telecharger les dependances JS si absentes ---
 if not exist "ui\vendor\chart.min.js" (
-    echo  [3/3] Telechargement des dependances UI...
+    echo  [3/4] Telechargement des dependances UI...
     if not exist "ui\vendor" mkdir "ui\vendor"
     curl -sL "https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css" -o "ui\vendor\daisyui.min.css"
     curl -sL "https://cdn.tailwindcss.com" -o "ui\vendor\tailwind.min.js"
     curl -sL "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" -o "ui\vendor\chart.min.js"
+    echo  OK.
+    echo.
+)
+
+:: --- Telecharger les icones energies et rangs si absents ---
+if not exist "ui\vendor\energy\fire.png" (
+    echo  [4/4] Telechargement des icones energies et rangs...
+    if not exist "ui\vendor\energy" mkdir "ui\vendor\energy"
+    if not exist "ui\vendor\ranks"  mkdir "ui\vendor\ranks"
+
+    set BASE_ENERGY=https://archives.bulbagarden.net/media/upload
+    curl -sL "%BASE_ENERGY%/a/ad/Fire-attack.png"       -o "ui\vendor\energy\fire.png"
+    curl -sL "%BASE_ENERGY%/1/11/Water-attack.png"      -o "ui\vendor\energy\water.png"
+    curl -sL "%BASE_ENERGY%/2/2e/Grass-attack.png"      -o "ui\vendor\energy\grass.png"
+    curl -sL "%BASE_ENERGY%/0/04/Lightning-attack.png"  -o "ui\vendor\energy\lightning.png"
+    curl -sL "%BASE_ENERGY%/e/ef/Psychic-attack.png"    -o "ui\vendor\energy\psychic.png"
+    curl -sL "%BASE_ENERGY%/4/48/Fighting-attack.png"   -o "ui\vendor\energy\fighting.png"
+    curl -sL "%BASE_ENERGY%/a/ab/Darkness-attack.png"   -o "ui\vendor\energy\darkness.png"
+    curl -sL "%BASE_ENERGY%/6/64/Metal-attack.png"      -o "ui\vendor\energy\metal.png"
+    curl -sL "%BASE_ENERGY%/1/1d/Colorless-attack.png"  -o "ui\vendor\energy\colorless.png"
+    curl -sL "%BASE_ENERGY%/8/8a/Dragon-attack.png"     -o "ui\vendor\energy\dragon.png"
+
+    set BASE_RANKS=https://archives.bulbagarden.net/media/upload
+    curl -sL "%BASE_RANKS%/6/65/TCGP_Icon_Beginner_Rank.png"                  -o "ui\vendor\ranks\beginner.png"
+    curl -sL "%BASE_RANKS%/1/11/TCGP_Icon_Pok%%C3%%A9_Ball_Rank.png"          -o "ui\vendor\ranks\pokeball.png"
+    curl -sL "%BASE_RANKS%/2/27/TCGP_Icon_Great_Ball_Rank.png"                -o "ui\vendor\ranks\greatball.png"
+    curl -sL "%BASE_RANKS%/f/f3/TCGP_Icon_Ultra_Ball_Rank.png"                -o "ui\vendor\ranks\ultraball.png"
+    curl -sL "%BASE_RANKS%/7/7e/TCGP_Icon_Master_Ball_Rank.png"               -o "ui\vendor\ranks\masterball.png"
+
     echo  OK.
     echo.
 )

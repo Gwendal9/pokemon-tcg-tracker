@@ -49,10 +49,18 @@ var matchForm = {
         });
     },
 
+    _intOrNull: function (id) {
+        var el = document.getElementById(id);
+        if (!el || el.value === '') return null;
+        var v = parseInt(el.value, 10);
+        return isNaN(v) ? null : v;
+    },
+
     _submit: function () {
         var result      = document.getElementById('mf-result').value;
         var deckVal     = document.getElementById('mf-deck').value;
-        var opponent    = (document.getElementById('mf-opponent').value || '').trim() || '?';
+        var opponent     = (document.getElementById('mf-opponent').value || '').trim() || null;
+        var opponentDeck = (document.getElementById('mf-opponent-deck').value || '').trim() || null;
         var firstPlayer = document.getElementById('mf-first').value;
         var seasonEl    = document.getElementById('mf-season');
         var season      = seasonEl ? (seasonEl.value.trim() || null) : null;
@@ -63,15 +71,25 @@ var matchForm = {
         tagBtns.forEach(function (b) { tagsArr.push(b.getAttribute('data-tag')); });
         var tags        = tagsArr.length > 0 ? tagsArr.join(',') : null;
 
+        var energyEl    = document.getElementById('mf-energy');
+        var oppEnergyEl = document.getElementById('mf-opp-energy');
+
         window.dispatchEvent(new CustomEvent('match-save-requested', {
             detail: {
-                result:       result,
-                deck_id:      deckVal ? parseInt(deckVal) : null,
-                opponent:     opponent,
-                first_player: firstPlayer,
-                season:       season,
-                notes:        notes,
-                tags:         tags
+                result:               result,
+                deck_id:              deckVal ? parseInt(deckVal) : null,
+                opponent:             opponent,
+                opponent_deck:        opponentDeck,
+                first_player:         firstPlayer,
+                season:               season,
+                notes:                notes,
+                tags:                 tags,
+                energy_type:          energyEl ? (energyEl.value || null) : null,
+                opponent_energy_type: oppEnergyEl ? (oppEnergyEl.value || null) : null,
+                player_points:        matchForm._intOrNull('mf-player-points'),
+                opponent_points:      matchForm._intOrNull('mf-opp-points'),
+                turns_played:         matchForm._intOrNull('mf-turns'),
+                damage_dealt:         matchForm._intOrNull('mf-damage'),
             }
         }));
     },
@@ -88,6 +106,16 @@ var matchForm = {
         if (f) f.value = '?';
         if (s) s.value = '';
         if (n) n.value = '';
+        var od = document.getElementById('mf-opponent-deck');
+        if (od) od.value = '';
+        ['mf-energy', 'mf-opp-energy'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        ['mf-player-points', 'mf-opp-points', 'mf-turns', 'mf-damage'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.value = '';
+        });
         document.querySelectorAll('#mf-tags .tag-toggle').forEach(function (b) {
             b.classList.remove('btn-primary');
             b.classList.add('btn-outline');

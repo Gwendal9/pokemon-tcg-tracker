@@ -1,9 +1,14 @@
-// ui/components/chart-winrate.js — Bar chart winrate par deck (Story 4.3)
+// ui/components/chart-winrate.js — Bar chart winrate par deck avec icônes énergie
 var chartWinrate = {
-    _chart: null,
+    _ICON_MAP: {
+        'Feu':'vendor/energy/fire.png','Eau':'vendor/energy/water.png',
+        'Plante':'vendor/energy/grass.png','Électrique':'vendor/energy/lightning.png',
+        'Psy':'vendor/energy/psychic.png','Combat':'vendor/energy/fighting.png',
+        'Obscurité':'vendor/energy/darkness.png','Acier':'vendor/energy/metal.png',
+        'Incolore':'vendor/energy/colorless.png','Dragon':'vendor/energy/dragon.png',
+    },
 
     init: function () {
-        // Écouter les stats chargées (partagé avec stats-bar.js)
         window.addEventListener('stats-loaded', function (e) {
             chartWinrate.render(e.detail);
         });
@@ -11,18 +16,11 @@ var chartWinrate = {
             chartWinrate._showEmpty('Erreur de chargement');
         });
 
-        // Injecter le conteneur dans .charts-row
         var row = document.querySelector('.charts-row');
         if (row) {
             var wrapper = document.createElement('div');
             wrapper.id = 'chart-winrate-wrapper';
-            wrapper.className = 'bg-base-200 rounded-box p-4';
-            wrapper.innerHTML =
-                '<h3 class="text-xs font-semibold uppercase tracking-wide mb-3 opacity-60">' +
-                'Winrate par deck</h3>' +
-                '<div class="relative" style="height:180px;">' +
-                '<canvas id="chart-winrate-canvas"></canvas>' +
-                '</div>';
+            wrapper.className = 'bg-base-200 rounded-box p-4 border border-base-300';
             row.insertBefore(wrapper, row.firstChild);
         }
     },
@@ -36,90 +34,42 @@ var chartWinrate = {
             return;
         }
 
-        // Restaurer le canvas si _showEmpty l'avait remplacé
+        var style     = getComputedStyle(document.documentElement);
+        var colorWin  = style.getPropertyValue('--color-win').trim()  || '#22c55e';
+        var colorLoss = style.getPropertyValue('--color-loss').trim() || '#ef4444';
+
+        var html = '<h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Winrate par deck</h3>';
+        active.forEach(function (d) {
+            var iconSrc = chartWinrate._ICON_MAP[d.energy_type];
+            var iconHtml = iconSrc
+                ? '<img src="' + iconSrc + '" alt="' + (d.energy_type || '') + '" style="width:14px;height:14px;object-fit:contain;flex-shrink:0;">'
+                : '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#888;flex-shrink:0;"></span>';
+            var wr = d.winrate.toFixed(1) + '%';
+            var winPct  = d.winrate.toFixed(1);
+            var lossPct = (100 - d.winrate).toFixed(1);
+            html +=
+                '<div class="flex items-center gap-2 mb-1">' +
+                '<div class="flex items-center gap-1 shrink-0" style="width:140px;overflow:hidden;">' +
+                iconHtml +
+                '<span class="text-xs truncate">' + d.deck_name.replace(/</g, '&lt;') + '</span>' +
+                '</div>' +
+                '<div class="flex flex-1 h-4 rounded overflow-hidden gap-px">' +
+                (d.wins  > 0 ? '<div style="width:' + winPct  + '%;background:' + colorWin  + ';min-width:2px;" title="' + d.wins  + ' victoires"></div>' : '') +
+                (d.losses > 0 ? '<div style="width:' + lossPct + '%;background:' + colorLoss + ';min-width:2px;" title="' + d.losses + ' défaites"></div>' : '') +
+                '</div>' +
+                '<span class="text-xs opacity-60 shrink-0 w-20 text-right">' + d.wins + 'V ' + d.losses + 'D · ' + wr + '</span>' +
+                '</div>';
+        });
+
         var wrapper = document.getElementById('chart-winrate-wrapper');
-        if (wrapper) {
-            var inner = wrapper.querySelector('.relative');
-            if (inner && !inner.querySelector('#chart-winrate-canvas')) {
-                inner.innerHTML = '<canvas id="chart-winrate-canvas"></canvas>';
-            }
-        }
-
-        var canvas = document.getElementById('chart-winrate-canvas');
-        if (!canvas) return;
-
-        var style = getComputedStyle(document.documentElement);
-        var colorWin     = style.getPropertyValue('--color-win').trim();
-        var colorLoss    = style.getPropertyValue('--color-loss').trim();
-        var colorContent = style.getPropertyValue('--color-base-content').trim();
-
-        var labels   = active.map(function (d) { return d.deck_name; });
-        var winrates = active.map(function (d) { return d.winrate; });
-        var bgColors = winrates.map(function (w) {
-            return w >= 50 ? colorWin : colorLoss;
-        });
-
-        if (chartWinrate._chart) {
-            chartWinrate._chart.destroy();
-        }
-
-        chartWinrate._chart = new Chart(canvas, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: winrates,
-                    backgroundColor: bgColors,
-                    borderRadius: 4,
-                    borderSkipped: false
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function (ctx) {
-                                var d = active[ctx.dataIndex];
-                                return ctx.parsed.y.toFixed(1) + '% (' + d.wins + 'V / ' + d.losses + 'D)';
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        ticks: { color: colorContent, maxRotation: 30 },
-                        grid: { display: false }
-                    },
-                    y: {
-                        min: 0,
-                        max: 100,
-                        ticks: {
-                            color: colorContent,
-                            callback: function (v) { return v + '%'; }
-                        },
-                        grid: { color: 'rgba(128,128,128,0.15)' }
-                    }
-                }
-            }
-        });
+        if (wrapper) wrapper.innerHTML = html;
     },
 
     _showEmpty: function (msg) {
-        if (chartWinrate._chart) {
-            chartWinrate._chart.destroy();
-            chartWinrate._chart = null;
-        }
         var wrapper = document.getElementById('chart-winrate-wrapper');
         if (!wrapper) return;
-        var inner = wrapper.querySelector('.relative');
-        if (inner) {
-            inner.innerHTML =
-                '<p class="text-sm text-center opacity-50 pt-16">' +
-                (msg || 'Aucune donnée') +
-                '</p>';
-        }
+        wrapper.innerHTML =
+            '<h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Winrate par deck</h3>' +
+            '<p class="text-sm text-center opacity-50 py-4">' + (msg || 'Aucune donnée') + '</p>';
     }
 };

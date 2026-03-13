@@ -47,10 +47,20 @@
         <section id="tab-dashboard">
             <div class="flex justify-between items-center mt-4 mb-2">
                 <h2 class="text-xl font-semibold">Dashboard</h2>
-                <select id="season-filter" data-season-filter="1"
-                        class="select select-sm select-bordered min-w-[180px]">
-                    <option value="">Toutes les saisons</option>
-                </select>
+                <div class="flex gap-2">
+                    <select data-matchtype-filter="1"
+                            class="select select-sm select-bordered">
+                        <option value="">Tous types</option>
+                        <option value="classé">Classé</option>
+                        <option value="aléatoire">Aléatoire</option>
+                        <option value="entraînement">Entraînement</option>
+                        <option value="événement">Événement</option>
+                    </select>
+                    <select id="season-filter" data-season-filter="1"
+                            class="select select-sm select-bordered min-w-[180px]">
+                        <option value="">Toutes les saisons</option>
+                    </select>
+                </div>
             </div>
             <div class="kpi-row"><!-- stats-bar.js --></div>
             <div class="charts-row"><!-- chart-winrate.js --></div>
@@ -62,6 +72,14 @@
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-semibold">Historique</h2>
                 <div class="flex gap-2 items-center">
+                    <select data-matchtype-filter="1"
+                            class="select select-sm select-bordered">
+                        <option value="">Tous types</option>
+                        <option value="classé">Classé</option>
+                        <option value="aléatoire">Aléatoire</option>
+                        <option value="entraînement">Entraînement</option>
+                        <option value="événement">Événement</option>
+                    </select>
                     <select data-season-filter="1"
                             class="select select-sm select-bordered min-w-[160px]">
                         <option value="">Toutes les saisons</option>
@@ -80,17 +98,66 @@
         <section id="tab-decks" class="hidden mt-4">
             <h2 class="text-xl font-semibold mb-4 pb-2 border-b border-base-300">Mes Decks</h2>
 
-            <div class="flex gap-2 mb-4">
+            <div class="flex gap-2 mb-4 flex-wrap">
                 <input id="deck-name-input"
                        type="text"
                        placeholder="Nom du deck"
                        maxlength="100"
                        class="input input-bordered flex-1 max-w-xs">
+                <select id="deck-energy-input" class="select select-bordered">
+                    <option value="">— Énergie —</option>
+                    <option value="Feu">Feu</option>
+                    <option value="Eau">Eau</option>
+                    <option value="Plante">Plante</option>
+                    <option value="Électrique">Électrique</option>
+                    <option value="Psy">Psy</option>
+                    <option value="Combat">Combat</option>
+                    <option value="Obscurité">Obscurité</option>
+                    <option value="Acier">Acier</option>
+                    <option value="Incolore">Incolore</option>
+                    <option value="Dragon">Dragon</option>
+                </select>
                 <button id="deck-create-btn" class="btn btn-primary">Créer</button>
             </div>
             <p id="deck-form-error" class="text-error text-sm mb-3" style="display:none;"></p>
 
             <div id="decks-list"></div>
+
+            <!-- Decks adversaires (archetypes) -->
+            <div class="bg-base-200 rounded-box p-4 mt-6 border border-base-300">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">Decks adversaires connus</h3>
+                    <button id="opponent-archetype-add-btn" class="btn btn-xs btn-primary">Ajouter</button>
+                </div>
+                <p class="text-sm opacity-60 mb-3">
+                    Définissez les decks adversaires courants en listant leurs Pokemon clés (séparés par <code class="font-mono text-xs">|</code>).
+                    Pendant un combat, le tracker détecte les Pokemon adverses et propose le deck le plus probable.
+                </p>
+
+                <!-- Formulaire ajout/édition (caché par défaut) -->
+                <div id="opponent-archetype-form" class="bg-base-300 rounded-box p-3 mb-3" style="display:none;">
+                    <p id="opponent-archetype-form-title" class="text-sm font-medium mb-2">Nouvel archetype</p>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex gap-2 flex-wrap">
+                            <input id="opponent-archetype-name" type="text" placeholder="Nom du deck (ex: Dracaufeu ex)"
+                                   maxlength="100" class="input input-bordered input-sm flex-1 min-w-[160px]">
+                            <input id="opponent-archetype-pokemon" type="text" placeholder="Pokemon clés séparés par | (ex: Dracaufeu|Caninos)"
+                                   maxlength="500" class="input input-bordered input-sm flex-1 min-w-[240px]">
+                            <input id="opponent-archetype-notes" type="text" placeholder="Notes (optionnel)"
+                                   maxlength="200" class="input input-bordered input-sm flex-1 min-w-[140px]">
+                        </div>
+                        <p id="opponent-archetype-error" class="text-error text-xs" style="display:none;"></p>
+                        <div class="flex gap-2">
+                            <button id="opponent-archetype-submit-btn" class="btn btn-sm btn-success">Enregistrer</button>
+                            <button id="opponent-archetype-cancel-btn" class="btn btn-sm btn-ghost">Annuler</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="opponent-archetypes-list" class="flex flex-col">
+                    <p class="text-sm opacity-50">Aucun archetype.</p>
+                </div>
+            </div>
         </section>
 
         <!-- Onglet Samples -->
@@ -180,6 +247,19 @@
                 <p id="config-deck-test-result" class="text-sm mt-2 font-mono opacity-70" style="display:none;"></p>
             </div>
 
+            <!-- Test detection Pokemon adverse -->
+            <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
+                <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-2">Detection Pokemon adverse</h3>
+                <p class="text-sm opacity-70 mb-3">
+                    Lance un combat, mets le jeu en pause (ou laisse-le tourner) puis clique ici pour tester la detection du Pokemon actif adverse sur l'ecran actuel.
+                    Les crops debug sont sauvegardes dans le dossier data/.
+                </p>
+                <button id="config-opp-pokemon-test-btn" class="btn btn-xs btn-outline">
+                    Tester detection Pokemon adverse
+                </button>
+                <div id="config-opp-pokemon-test-result" class="text-sm mt-2 font-mono opacity-70" style="display:none;"></div>
+            </div>
+
             <!-- Deck actif -->
             <div class="bg-base-200 rounded-box p-4 mb-4 border border-base-300">
                 <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Deck actif</h3>
@@ -265,10 +345,17 @@
                     </select>
                 </div>
 
-                <div class="form-control">
-                    <label class="label"><span class="label-text">Adversaire (deck)</span></label>
-                    <input id="mf-opponent" type="text" placeholder="ex: Charizard ex"
-                           class="input input-bordered" maxlength="100">
+                <div class="flex gap-2">
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Deck adverse</span></label>
+                        <input id="mf-opponent-deck" type="text" placeholder="ex: Dracaufeu ex"
+                               class="input input-bordered" maxlength="100">
+                    </div>
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Pseudo adv. (optionnel)</span></label>
+                        <input id="mf-opponent" type="text" placeholder="ex: Trainer42"
+                               class="input input-bordered" maxlength="100">
+                    </div>
                 </div>
 
                 <div class="form-control">
@@ -278,6 +365,64 @@
                         <option value="Moi">Moi</option>
                         <option value="Adversaire">Adversaire</option>
                     </select>
+                </div>
+
+                <div class="flex gap-2">
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Énergie (toi)</span></label>
+                        <select id="mf-energy" class="select select-bordered select-sm">
+                            <option value="">—</option>
+                            <option value="Feu">Feu</option>
+                            <option value="Eau">Eau</option>
+                            <option value="Plante">Plante</option>
+                            <option value="Électrique">Électrique</option>
+                            <option value="Psy">Psy</option>
+                            <option value="Combat">Combat</option>
+                            <option value="Obscurité">Obscurité</option>
+                            <option value="Acier">Acier</option>
+                            <option value="Incolore">Incolore</option>
+                            <option value="Dragon">Dragon</option>
+                        </select>
+                    </div>
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Énergie (adv.)</span></label>
+                        <select id="mf-opp-energy" class="select select-bordered select-sm">
+                            <option value="">—</option>
+                            <option value="Feu">Feu</option>
+                            <option value="Eau">Eau</option>
+                            <option value="Plante">Plante</option>
+                            <option value="Électrique">Électrique</option>
+                            <option value="Psy">Psy</option>
+                            <option value="Combat">Combat</option>
+                            <option value="Obscurité">Obscurité</option>
+                            <option value="Acier">Acier</option>
+                            <option value="Incolore">Incolore</option>
+                            <option value="Dragon">Dragon</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Score toi</span></label>
+                        <input id="mf-player-points" type="number" min="0" max="3" placeholder="0-3"
+                               class="input input-bordered input-sm">
+                    </div>
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Score adv.</span></label>
+                        <input id="mf-opp-points" type="number" min="0" max="3" placeholder="0-3"
+                               class="input input-bordered input-sm">
+                    </div>
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Tours</span></label>
+                        <input id="mf-turns" type="number" min="1" placeholder="—"
+                               class="input input-bordered input-sm">
+                    </div>
+                    <div class="form-control flex-1">
+                        <label class="label"><span class="label-text">Dégâts</span></label>
+                        <input id="mf-damage" type="number" min="0" placeholder="—"
+                               class="input input-bordered input-sm">
+                    </div>
                 </div>
 
                 <div class="form-control">
@@ -342,6 +487,7 @@
     <script src="components/chart-winrate.js"></script>
     <script src="components/chart-trend.js"></script>
     <script src="components/chart-opponents.js"></script>
+    <script src="components/chart-energy.js"></script>
     <script src="components/season-stats.js"></script>
     <script src="components/match-table.js"></script>
     <script src="components/detail-panel.js"></script>

@@ -62,7 +62,8 @@ def _rgb_to_hsv(arr: np.ndarray) -> np.ndarray:
     cmin = np.minimum(np.minimum(r, g), b)
     delta = cmax - cmin
     h = np.zeros_like(r)
-    s = np.where(cmax > 0, delta / cmax, 0.)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        s = np.where(cmax > 0, delta / cmax, 0.)
     v = cmax
     mr = (delta > 0) & (cmax == r)
     mg = (delta > 0) & (cmax == g)
@@ -238,6 +239,10 @@ class PollingLoop:
         self._on_mumu_detected = None
         self._on_mumu_lost = None
         self._on_state_changed = None
+        self._prequeue_exit_ticks = 0     # debounce quitter PRE_QUEUE sans IN_COMBAT
+        self._prequeue_combat_ticks = 0   # debounce PRE_QUEUE → IN_COMBAT
+        self._combat_prequeue_ticks = 0   # debounce retour PRE_QUEUE depuis IN_COMBAT
+        self._end_screen_exit_ticks = 0   # debounce END_SCREEN → IDLE
 
     # ------------------------------------------------------------------
     # Propriétés thread-safe
@@ -336,7 +341,7 @@ class PollingLoop:
                 self._state = next_state
                 if outcome is not None:
                     self._last_outcome = outcome
-            logger.info("État → %s (était %s)%s", next_state.value, prev_state.value,
+            logger.info("Etat: %s (etait %s)%s", next_state.value, prev_state.value,
                         f"  outcome={outcome}" if outcome else "")
             if self._on_state_changed:
                 self._on_state_changed(prev_state, next_state)
@@ -353,19 +358,50 @@ class PollingLoop:
                 return CombatState.PRE_QUEUE, None
 
         elif current == CombatState.PRE_QUEUE:
-            if d.is_in_combat(img):
-                return CombatState.IN_COMBAT, None
-            elif not d.is_pre_queue_ranked(img):
-                return CombatState.IDLE, None
+            _in_combat = d.is_in_combat(img)
+            _in_prequeue = d.is_pre_queue_ranked(img)
+            if _in_combat:
+                self._prequeue_combat_ticks += 1
+                self._prequeue_exit_ticks = 0
+                if self._prequeue_combat_ticks >= 8:
+                    self._prequeue_combat_ticks = 0
+                    return CombatState.IN_COMBAT, None
+            elif _in_prequeue:
+                self._prequeue_combat_ticks = 0
+                self._prequeue_exit_ticks = 0
+            else:
+                # Ni prequeue ni combat — debounce avant de retourner IDLE
+                self._prequeue_combat_ticks = 0
+                self._prequeue_exit_ticks += 1
+                if self._prequeue_exit_ticks >= 15:
+                    self._prequeue_exit_ticks = 0
+                    return CombatState.IDLE, None
 
         elif current == CombatState.IN_COMBAT:
             if d.is_end_screen(img):
+                self._combat_prequeue_ticks = 0
                 outcome = d.predict_outcome(img)
                 logger.info("Fin de combat détectée : %s", outcome)
                 return CombatState.END_SCREEN, outcome
+            # Retour arrière avant combat (ex: pre_queue → retour → pre_queue) :
+            # si le ML voit pre_queue depuis IN_COMBAT pendant ~1s, c'est une fausse
+            # détection — sortir proprement vers PRE_QUEUE sans sauvegarder de match.
+            if d.is_pre_queue_ranked(img):
+                self._combat_prequeue_ticks += 1
+                if self._combat_prequeue_ticks >= 10:
+                    self._combat_prequeue_ticks = 0
+                    logger.info("Retour PRE_QUEUE depuis IN_COMBAT (fausse détection corrigée)")
+                    return CombatState.PRE_QUEUE, None
+            else:
+                self._combat_prequeue_ticks = 0
 
         elif current == CombatState.END_SCREEN:
             if not d.is_end_screen(img):
-                return CombatState.IDLE, None
+                self._end_screen_exit_ticks += 1
+                if self._end_screen_exit_ticks >= 5:
+                    self._end_screen_exit_ticks = 0
+                    return CombatState.IDLE, None
+            else:
+                self._end_screen_exit_ticks = 0
 
         return current, None

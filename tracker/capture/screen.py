@@ -108,6 +108,54 @@ def find_mumu_window() -> int | None:
     return found[0] if found else None
 
 
+def get_tracker_start_position(tracker_width: int, tracker_height: int,
+                               margin: int = 10) -> tuple[int, int]:
+    """Calcule la position (x, y) pour ouvrir le tracker à côté de l'émulateur.
+
+    Priorité :
+    1. À droite de l'émulateur si la place suffit.
+    2. À gauche de l'émulateur sinon.
+    3. (50, 50) si l'émulateur n'est pas trouvé ou en cas d'erreur.
+
+    Works on Windows only (win32gui). Retourne (50, 50) silencieusement sur WSL/CI.
+    """
+    try:
+        import win32gui  # noqa: PLC0415
+        import ctypes    # noqa: PLC0415
+
+        # Résolution de l'écran principal (DPI-aware)
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            pass
+        screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+
+        hwnd = find_mumu_window()
+        if hwnd is None:
+            return (50, 50)
+
+        # Chercher la fenêtre parente top-level (MuMuPlayer, pas l'onglet enfant)
+        parent = hwnd
+        while True:
+            p = win32gui.GetParent(parent)
+            if not p:
+                break
+            parent = p
+
+        l, t, r, b = win32gui.GetWindowRect(parent)
+
+        # À droite de l'émulateur
+        if r + margin + tracker_width <= screen_w:
+            return (r + margin, max(0, t))
+        # À gauche de l'émulateur
+        if l - margin - tracker_width >= 0:
+            return (l - margin - tracker_width, max(0, t))
+        # Fallback
+        return (50, 50)
+    except Exception:
+        return (50, 50)
+
+
 def auto_detect_mumu_region() -> dict | None:
     """Détecte la zone de rendu Pokemon dans MuMu Player.
 

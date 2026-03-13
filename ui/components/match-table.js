@@ -11,6 +11,30 @@ var _MT_ENERGY_COLORS = {
     'Incolore':   '#C0C0C0',
 };
 
+var _MT_ENERGY_ICONS = {
+    'Feu':        'vendor/energy/fire.png',
+    'Eau':        'vendor/energy/water.png',
+    'Plante':     'vendor/energy/grass.png',
+    'Électrique': 'vendor/energy/lightning.png',
+    'Psy':        'vendor/energy/psychic.png',
+    'Combat':     'vendor/energy/fighting.png',
+    'Obscurité':  'vendor/energy/darkness.png',
+    'Acier':      'vendor/energy/metal.png',
+    'Incolore':   'vendor/energy/colorless.png',
+    'Dragon':     'vendor/energy/dragon.png',
+};
+
+// Mapping rang FR → fichier icône (Hyper Ball = Ultra Ball en français)
+var _MT_RANK_ICONS = {
+    'débutant':    'vendor/ranks/beginner.png',
+    'poké ball':   'vendor/ranks/pokeball.png',
+    'poke ball':   'vendor/ranks/pokeball.png',
+    'super ball':  'vendor/ranks/greatball.png',
+    'hyper ball':  'vendor/ranks/ultraball.png',
+    'ultra ball':  'vendor/ranks/ultraball.png',
+    'master ball': 'vendor/ranks/masterball.png',
+};
+
 var matchTable = {
     _decksMap: {},   // {deck_id: deck_name}
     _matches:  [],   // liste brute (non filtrée)
@@ -28,7 +52,7 @@ var matchTable = {
             var detail = e.detail || {};
             var decks = detail.decks || [];
             matchTable._decksMap = {};
-            decks.forEach(function (d) { matchTable._decksMap[d.id] = d.name; });
+            decks.forEach(function (d) { matchTable._decksMap[d.id] = { name: d.name, energy_type: d.energy_type || null }; });
             matchTable._matches = detail.matches || [];
             matchTable._render();
         });
@@ -110,7 +134,7 @@ var matchTable = {
             '<table class="table table-sm w-full">' +
             '<thead><tr>' +
             '<th>Date</th><th>Résultat</th><th>Deck</th>' +
-            '<th>Adversaire</th><th>Premier</th><th>Score</th><th>Tours</th><th>Dégâts</th><th>Énergie</th><th></th>' +
+            '<th>Adversaire</th><th>Premier</th><th>Score</th><th>Tours</th><th>Dégâts</th><th>Rang</th><th></th>' +
             '</tr></thead>' +
             '<tbody data-mt-tbody>' +
             '<tr><td colspan="10" class="text-center opacity-50 py-4">Chargement…</td></tr>' +
@@ -188,8 +212,10 @@ var matchTable = {
             if (matchTable._filterResult !== 'all' && m.result !== matchTable._filterResult) return false;
             if (matchTable._filterDeck !== '' && String(m.deck_id) !== matchTable._filterDeck) return false;
             if (_search) {
-                var _deckName = (matchTable._decksMap[m.deck_id] || '').toLowerCase();
-                if (!(m.opponent || '').toLowerCase().includes(_search) &&
+                var _deckEntry = matchTable._decksMap[m.deck_id];
+                var _deckName = (_deckEntry ? _deckEntry.name : '').toLowerCase();
+                if (!(m.opponent_deck || '').toLowerCase().includes(_search) &&
+                    !(m.opponent || '').toLowerCase().includes(_search) &&
                     !(m.notes    || '').toLowerCase().includes(_search) &&
                     !_deckName.includes(_search)) return false;
             }
@@ -239,37 +265,41 @@ var matchTable = {
             Object.keys(matchTable._decksMap).forEach(function (id) {
                 var selected = matchTable._filterDeck === String(id) ? ' selected' : '';
                 html += '<option value="' + id + '"' + selected + '>' +
-                    matchTable._esc(matchTable._decksMap[id]) + '</option>';
+                    matchTable._esc(matchTable._decksMap[id].name) + '</option>';
             });
             sel.innerHTML = html;
         });
     },
 
     _rowHTML: function (m) {
-        var deckName = m.deck_id
-            ? (matchTable._decksMap[m.deck_id] || '#' + m.deck_id)
-            : '—';
+        var deckEntry = m.deck_id ? (matchTable._decksMap[m.deck_id] || null) : null;
+        var deckName = deckEntry ? deckEntry.name : (m.deck_id ? '#' + m.deck_id : '—');
+        var deckEnergy = deckEntry ? deckEntry.energy_type : null;
         var abandonBadge = '';
         if (m.conceded_by === 'opponent') {
             abandonBadge = '<div><span class="badge badge-xs badge-info opacity-80" title="L\'adversaire a abandonné">Abandon adv.</span></div>';
         } else if (m.conceded_by === 'self') {
             abandonBadge = '<div><span class="badge badge-xs badge-warning opacity-80" title="Vous avez abandonné">Abandon</span></div>';
         }
+        var energyIcon = matchTable._energyBadge(deckEnergy);
         return '<tr data-match-id="' + m.id + '">' +
             '<td class="text-xs opacity-60 whitespace-nowrap">' +
             matchTable._formatDate(m.captured_at) + '</td>' +
             '<td>' + matchTable._resultBadge(m.result) + abandonBadge + '</td>' +
-            '<td class="text-sm">' + matchTable._esc(deckName) +
+            '<td class="text-sm">' +
+            '<div class="flex items-center gap-1">' + energyIcon + '<span>' + matchTable._esc(deckName) + '</span></div>' +
             (m.match_type && m.match_type !== '?' ? '<div><span class="badge badge-xs badge-outline opacity-60">' + matchTable._esc(m.match_type) + '</span></div>' : '') +
             (m.tags ? '<div>' + m.tags.split(',').map(function (t) {
                 return '<span class="badge badge-xs badge-ghost mr-0.5">' + matchTable._esc(t.trim()) + '</span>';
             }).join('') + '</div>' : '') +
             '</td>' +
             '<td class="text-sm">' +
-            '<button class="link link-hover text-sm text-left" data-opponent="' +
-            matchTable._esc(m.opponent || '?') + '"' +
+            '<div class="flex items-center gap-1">' + matchTable._energyBadge(m.opponent_energy_type) +
+            '<button class="link link-hover text-sm text-left font-medium" data-opponent="' +
+            matchTable._esc(m.opponent_deck || m.opponent || '?') + '"' +
             ' onclick="matchTable._openMatchup(this.getAttribute(\'data-opponent\'))">' +
-            matchTable._esc(m.opponent || '?') + '</button>' +
+            matchTable._esc(m.opponent_deck || '—') + '</button></div>' +
+            (m.opponent && m.opponent !== '?' ? '<div class="text-xs opacity-40">' + matchTable._esc(m.opponent) + '</div>' : '') +
             (m.notes ? '<div class="text-xs opacity-50 italic mt-0.5">' + matchTable._esc(m.notes) + '</div>' : '') +
             '</td>' +
             '<td class="text-sm">' + matchTable._esc(m.first_player || '?') + '</td>' +
@@ -284,7 +314,7 @@ var matchTable = {
             '<td class="text-sm text-center">' +
             (m.damage_dealt != null ? m.damage_dealt : '<span class="opacity-30">—</span>') +
             '</td>' +
-            '<td class="text-sm text-center">' + matchTable._energyBadge(m.energy_type) + '</td>' +
+            '<td class="text-xs text-center whitespace-nowrap">' + matchTable._rankBadge(m) + '</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-ghost btn-xs" ' +
             'onclick="matchTable._startEdit(this)" title="Modifier">✎</button>' +
@@ -295,12 +325,17 @@ var matchTable = {
     },
 
     _editRowHTML: function (m) {
-        var deckName = m.deck_id
-            ? (matchTable._decksMap[m.deck_id] || '#' + m.deck_id)
-            : '—';
+        var deckEntry = m.deck_id ? (matchTable._decksMap[m.deck_id] || null) : null;
+        var deckName = deckEntry ? deckEntry.name : (m.deck_id ? '#' + m.deck_id : '—');
+        var energyOpts = ['', 'Feu', 'Eau', 'Plante', 'Électrique', 'Psy', 'Combat', 'Obscurité', 'Acier', 'Incolore', 'Dragon'];
+        var oppEnergySelect = '<select data-edit-field="opponent_energy_type" class="select select-xs select-bordered w-full mt-0.5">' +
+            energyOpts.map(function (v) {
+                return '<option value="' + v + '"' + (m.opponent_energy_type === v ? ' selected' : '') + '>' + (v || '— Énergie —') + '</option>';
+            }).join('') + '</select>';
         return '<tr data-match-id="' + m.id + '" data-editing="1">' +
-            '<td class="text-xs opacity-60 whitespace-nowrap">' +
-            matchTable._formatDate(m.captured_at) + '</td>' +
+            // col 1: Date
+            '<td class="text-xs opacity-60 whitespace-nowrap">' + matchTable._formatDate(m.captured_at) + '</td>' +
+            // col 2: Résultat
             '<td>' +
             '<select data-edit-field="result" class="select select-xs select-bordered">' +
             ['W', 'L', 'D', '?'].map(function (v) {
@@ -308,28 +343,72 @@ var matchTable = {
             }).join('') +
             '</select>' +
             '</td>' +
+            // col 3: Deck (lecture seule)
             '<td class="text-sm">' + matchTable._esc(deckName) + '</td>' +
+            // col 4: Adversaire
             '<td>' +
+            '<input data-edit-field="opponent_deck" type="text" maxlength="100"' +
+            ' value="' + matchTable._esc(m.opponent_deck || '') + '"' +
+            ' placeholder="Deck adv." class="input input-xs input-bordered w-28">' +
             '<input data-edit-field="opponent" type="text" maxlength="100"' +
             ' value="' + matchTable._esc(m.opponent || '') + '"' +
-            ' class="input input-xs input-bordered w-28">' +
+            ' placeholder="Pseudo adv." class="input input-xs input-bordered w-28 mt-0.5">' +
+            oppEnergySelect +
             '<input data-edit-field="notes" type="text" maxlength="500"' +
             ' value="' + matchTable._esc(m.notes || '') + '"' +
             ' placeholder="Notes…" class="input input-xs input-bordered w-28 mt-0.5">' +
             '</td>' +
+            // col 5: Premier
             '<td>' +
             '<input data-edit-field="first_player" type="text" maxlength="50"' +
             ' value="' + matchTable._esc(m.first_player || '') + '"' +
-            ' class="input input-xs input-bordered w-20">' +
+            ' class="input input-xs input-bordered w-16">' +
             '</td>' +
-            '<td>' + matchTable._energyBadge(m.energy_type) + '</td>' +
-            '<td class="flex gap-1">' +
-            '<button class="btn btn-success btn-xs" ' +
-            'onclick="matchTable._saveEdit(this)" title="Enregistrer">✓</button>' +
-            '<button class="btn btn-ghost btn-xs" ' +
-            'onclick="matchTable._render()" title="Annuler">✕</button>' +
+            // col 6: Score
+            '<td class="text-center">' +
+            '<div class="flex items-center gap-0.5">' +
+            '<input data-edit-field="player_points" type="number" min="0" max="99"' +
+            ' value="' + (m.player_points != null ? m.player_points : '') + '"' +
+            ' placeholder="Moi" class="input input-xs input-bordered w-12">' +
+            '<span class="text-xs opacity-50">-</span>' +
+            '<input data-edit-field="opponent_points" type="number" min="0" max="99"' +
+            ' value="' + (m.opponent_points != null ? m.opponent_points : '') + '"' +
+            ' placeholder="Adv" class="input input-xs input-bordered w-12">' +
+            '</div>' +
+            '</td>' +
+            // col 7: Tours
+            '<td class="text-center">' +
+            '<input data-edit-field="turns_played" type="number" min="0" max="999"' +
+            ' value="' + (m.turns_played != null ? m.turns_played : '') + '"' +
+            ' placeholder="—" class="input input-xs input-bordered w-14">' +
+            '</td>' +
+            // col 8: Dégâts
+            '<td class="text-center">' +
+            '<input data-edit-field="damage_dealt" type="number" min="0" max="9999"' +
+            ' value="' + (m.damage_dealt != null ? m.damage_dealt : '') + '"' +
+            ' placeholder="—" class="input input-xs input-bordered w-16">' +
+            '</td>' +
+            // col 9: Rang (éditable)
+            '<td class="text-xs">' +
+            '<select data-edit-field="match_type" class="select select-xs select-bordered w-full mb-0.5">' +
+            ['?', 'classé', 'aléatoire', 'entraînement', 'événement'].map(function (v) {
+                return '<option value="' + v + '"' + (m.match_type === v ? ' selected' : '') + '>' + v + '</option>';
+            }).join('') + '</select>' +
+            '<input data-edit-field="rank_name" type="text" maxlength="50"' +
+            ' value="' + matchTable._esc(m.rank_name || '') + '"' +
+            ' placeholder="Rang…" class="input input-xs input-bordered w-full mb-0.5">' +
+            '<input data-edit-field="rank_points" type="number" min="0" max="99999"' +
+            ' value="' + (m.rank_points != null ? m.rank_points : '') + '"' +
+            ' placeholder="pts" class="input input-xs input-bordered w-full">' +
+            '</td>' +
+            // col 10: Actions
+            '<td>' +
+            '<div class="flex gap-1">' +
+            '<button class="btn btn-success btn-xs" onclick="matchTable._saveEdit(this)" title="Enregistrer">✓</button>' +
+            '<button class="btn btn-ghost btn-xs" onclick="matchTable._render()" title="Annuler">✕</button>' +
             '<button class="btn btn-ghost btn-xs opacity-60" title="Marquer abandon (moi)" ' +
-            'onclick="matchTable._toggleConcede(' + m.id + ')">Abandon</button>' +
+            'onclick="matchTable._toggleConcede(' + m.id + ')">Aband.</button>' +
+            '</div>' +
             '</td>' +
             '</tr>';
     },
@@ -356,13 +435,13 @@ var matchTable = {
         var tr = btn.closest('tr[data-match-id]');
         if (!tr) return;
         var matchId = parseInt(tr.getAttribute('data-match-id'));
+        var numericFields = ['player_points', 'opponent_points', 'turns_played', 'damage_dealt', 'rank_points'];
         tr.querySelectorAll('[data-edit-field]').forEach(function (input) {
+            var field = input.getAttribute('data-edit-field');
+            var value = input.value;
+            if (numericFields.indexOf(field) >= 0 && value === '') value = null;
             window.dispatchEvent(new CustomEvent('match-update-field-requested', {
-                detail: {
-                    match_id: matchId,
-                    field:    input.getAttribute('data-edit-field'),
-                    value:    input.value
-                }
+                detail: { match_id: matchId, field: field, value: value }
             }));
         });
         // match-updated (émis par app.js) déclenchera matches-load-requested → re-render
@@ -378,7 +457,7 @@ var matchTable = {
         var matchId = tr.getAttribute('data-match-id');
         var confirmHTML =
             '<tr data-match-id="' + matchId + '" data-confirming-delete="1">' +
-            '<td colspan="9" class="text-sm opacity-70 text-right pr-2">Supprimer ce match ?</td>' +
+            '<td colspan="9" class="text-sm opacity-70 text-right pr-2 align-middle">Supprimer ce match ?</td>' +
             '<td class="flex gap-1">' +
             '<button class="btn btn-error btn-xs" ' +
             'onclick="matchTable._confirmDelete(this)">Oui</button>' +
@@ -428,8 +507,35 @@ var matchTable = {
         });
     },
 
+    _rankBadge: function (m) {
+        if (m.match_type !== 'classé') return '<span class="opacity-20">—</span>';
+        if (!m.rank_name && m.rank_points == null) return '<span class="opacity-30">classé</span>';
+        var icon = '';
+        if (m.rank_name) {
+            var key = m.rank_name.toLowerCase().replace(/\s+\d+$/, '').trim();
+            var iconSrc = _MT_RANK_ICONS[key];
+            if (iconSrc) {
+                icon = '<img src="' + iconSrc + '" alt="' + matchTable._esc(m.rank_name) + '" ' +
+                       'title="' + matchTable._esc(m.rank_name) + (m.rank_points != null ? ' — ' + m.rank_points + ' pts' : '') + '" ' +
+                       'style="width:28px;height:28px;object-fit:contain;display:inline-block;" ' +
+                       'onerror="this.style.display=\'none\'">';
+            }
+        }
+        var pts = m.rank_points != null ? '<div class="text-xs opacity-60 leading-none">' + m.rank_points + ' pts</div>' : '';
+        var name = m.rank_name ? '<div class="text-xs leading-none">' + matchTable._esc(m.rank_name) + '</div>' : '';
+        return '<div class="flex flex-col items-center gap-0.5">' + icon + name + pts + '</div>';
+    },
+
     _energyBadge: function (energyType) {
         if (!energyType || energyType === '?') return '<span class="opacity-20">—</span>';
+        var iconSrc = _MT_ENERGY_ICONS[energyType];
+        if (iconSrc) {
+            var fallbackColor = _MT_ENERGY_COLORS[energyType] || '#888';
+            return '<img src="' + iconSrc + '" alt="' + matchTable._esc(energyType) + '" ' +
+                   'title="' + matchTable._esc(energyType) + '" ' +
+                   'style="width:20px;height:20px;object-fit:contain;display:inline-block;" ' +
+                   'onerror="this.outerHTML=\'<span style=&quot;display:inline-block;width:10px;height:10px;border-radius:50%;background:' + fallbackColor + ';&quot;></span>\'">';
+        }
         var color = _MT_ENERGY_COLORS[energyType] || '#888';
         return '<span style="display:inline-flex;align-items:center;gap:3px;">' +
             '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>' +
