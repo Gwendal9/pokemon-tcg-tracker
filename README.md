@@ -5,6 +5,14 @@ Compatible avec tous les émulateurs Android (MuMu, BlueStacks, LDPlayer…).
 
 ---
 
+## Aperçu
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+*Dashboard principal — KPI, graphiques winrate et top adversaires*
+
+---
+
 ## Prérequis
 
 | | |
@@ -37,17 +45,11 @@ launch.bat
 
 ---
 
-## Utilisation
-
-| Action | Comment |
-|---|---|
-| Ouvrir le dashboard | Double-clique sur l'icône dans le tray |
-| Réduire | Ferme la fenêtre (l'appli continue en arrière-plan) |
-| Quitter | Clic droit sur l'icône → **Quitter** |
-
----
-
 ## Configuration initiale
+
+![Config](docs/screenshots/config.png)
+
+*Onglet Config — sélection de la fenêtre émulateur et gestion des decks*
 
 Ouvre l'onglet **Config** au premier lancement :
 
@@ -70,6 +72,10 @@ Le tracker détecte en temps réel l'état du jeu et enregistre chaque match aut
 
 ### Associer un deck détecté
 
+![Détection deck](docs/screenshots/deck_detection.png)
+
+*Liaison automatique entre le nom détecté OCR et ton deck*
+
 1. Lance une partie — le tracker lit le nom et le type d'énergie de ton deck depuis l'écran de file d'attente
 2. Dans **Config → Détection de deck**, le deck détecté apparaît dans la liste
 3. Clique **"Lier"** et sélectionne le deck correspondant
@@ -80,11 +86,21 @@ Le tracker détecte en temps réel l'état du jeu et enregistre chaque match aut
 ## Fonctionnalités
 
 ### Dashboard
+
+![Dashboard graphiques](docs/screenshots/dashboard_charts.png)
+
+*Graphiques — winrate par deck, tendance sur les derniers matchs, top adversaires*
+
 - KPI : winrate, matchs joués, série en cours
-- Graphiques : winrate par deck, tendance, top adversaires
+- Graphiques : winrate par deck, tendance, top adversaires, répartition énergie
 - Filtre par saison · thème clair/sombre
 
 ### Historique
+
+![Historique](docs/screenshots/history.png)
+
+*Tableau historique — toutes les colonnes et filtres*
+
 - Filtres : résultat, deck, adversaire, date, tags
 - Recherche globale (adversaire, deck, notes)
 - Édition inline des matchs
@@ -93,7 +109,18 @@ Le tracker détecte en temps réel l'état du jeu et enregistre chaque match aut
 - Export CSV
 
 ### Saisie manuelle
+
 Bouton **+ Match** dans la navbar — résultat, deck, adversaire, premier joueur, saison, notes.
+
+---
+
+## Utilisation
+
+| Action | Comment |
+|---|---|
+| Ouvrir le dashboard | Double-clique sur l'icône dans le tray |
+| Réduire | Ferme la fenêtre (l'appli continue en arrière-plan) |
+| Quitter | Clic droit sur l'icône → **Quitter** |
 
 ---
 
