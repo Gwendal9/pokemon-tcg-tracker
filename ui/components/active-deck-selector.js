@@ -36,6 +36,7 @@ class ActiveDeckSelector {
         });
 
         window.addEventListener('active-deck-saved', (e) => {
+            this._pendingActiveId = e.detail.deck_id;
             this._showConfirm(e.detail.deck_id);
         });
 

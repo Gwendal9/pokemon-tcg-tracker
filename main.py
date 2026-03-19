@@ -16,6 +16,7 @@ Threading :
 import logging
 import logging.handlers
 import os
+import sys
 import threading
 import warnings
 
@@ -33,7 +34,10 @@ from tracker.db.database import DatabaseManager
 from tracker.paths import get_data_dir
 from tracker.tray import TrayManager
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    _HERE = sys._MEIPASS   # ressources bundlées dans _internal/
+else:
+    _HERE = os.path.dirname(os.path.abspath(__file__))
 LOG_PATH = os.path.join(get_data_dir(), "app.log")
 
 logger = logging.getLogger(__name__)
@@ -505,11 +509,12 @@ def main() -> None:
         from tracker import updater
         result = updater.check_for_update(__version__)
         if result:
-            version = str(result["version"]).replace("'", "").replace('"', '')
-            url     = str(result["url"]).replace("'", "").replace('"', '')
+            import json as _json
+            v_js = _json.dumps(str(result["version"]))
+            u_js = _json.dumps(str(result["url"]))
             js = (
                 "window.dispatchEvent(new CustomEvent('update-available',"
-                "{{detail:{{version:'{v}',url:'{u}'}}}}))".format(v=version, u=url)
+                "{{detail:{{version:{v},url:{u}}}}}))".format(v=v_js, u=u_js)
             )
             try:
                 window.evaluate_js(js)

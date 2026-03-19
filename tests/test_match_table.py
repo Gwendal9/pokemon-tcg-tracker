@@ -114,9 +114,9 @@ def test_match_table_filters_synchronize_across_tables():
 # match-table.js — colonnes et badges
 # ---------------------------------------------------------------------------
 
-def test_match_table_has_six_columns():
+def test_match_table_has_ten_columns():
     js = JS_PATH.read_text(encoding="utf-8")
-    assert "colspan=\"6\"" in js
+    assert "colspan=\"10\"" in js
 
 
 def test_match_table_shows_date_column():

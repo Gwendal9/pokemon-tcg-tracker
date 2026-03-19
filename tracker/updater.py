@@ -10,17 +10,20 @@ GITHUB_RELEASES_URL = (
 )
 
 
+def _parse_version(v: str) -> tuple:
+    """Parse 'vX.Y.Z' ou 'X.Y.Z' en tuple d'entiers."""
+    return tuple(int(x) for x in v.lstrip("v").split(".")[:3])
+
+
 def _is_newer(latest: str, current: str) -> bool:
     """Compare deux versions semver 'X.Y.Z'. Retourne True si latest > current."""
     try:
-        def parse(v):
-            return tuple(int(x) for x in v.lstrip("v").split(".")[:3])
-        return parse(latest) > parse(current)
+        return _parse_version(latest) > _parse_version(current)
     except Exception:
         return False
 
 
-def check_for_update(current_version: str):
+def check_for_update(current_version: str) -> "dict | None":
     """Interroge GitHub Releases API.
 
     Retourne {"version": "X.Y.Z", "url": "..."} si une version plus récente

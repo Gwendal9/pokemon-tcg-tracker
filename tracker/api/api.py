@@ -1,13 +1,13 @@
 """tracker/api/api.py — Bridge pywebview.
 
-Toutes les méthodes sont des `def` synchrones.
-pywebview 6.1 exécute les appels API dans un thread dédié — pas besoin d'async.
-Les coroutines async causaient un RuntimeWarning "coroutine never awaited".
+Toutes les méthodes exposées à pywebview 6.1 sont `async def`.
+pywebview 6.1 attend des coroutines — `def` synchrones causent un RuntimeError côté JS.
 
 Règles critiques :
 - Retourner {"error": "message"} en cas d'erreur (jamais lever d'exception non catchée)
 - self._db_lock protège toutes les écritures SQLite depuis le thread de capture
 - Les méthodes bridge conservent snake_case dans les dicts retournés (jamais camelCase)
+- Les méthodes non exposées (helpers internes, set_polling) restent `def`
 """
 import concurrent.futures
 import logging
@@ -15,7 +15,7 @@ import threading
 
 from tracker.db.database import DatabaseManager
 from tracker.db.models import Models
-from tracker.config import ConfigManager
+from tracker.config import ConfigManager, CONFIG_DEFAULTS
 from tracker.capture.screen import (
     capture_region, capture_region_pil,
     select_region_interactive, auto_detect_mumu_region, show_region_highlight,
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrackerAPI:
-    """Bridge pywebview — toutes les méthodes sont synchrones (def)."""
+    """Bridge pywebview — méthodes exposées au JS sont `async def` (pywebview 6.1)."""
 
     def __init__(self, db: DatabaseManager):
         self._db = db
@@ -41,15 +41,15 @@ class TrackerAPI:
     # Deck CRUD (Story 2.1)
     # -------------------------------------------------------------------------
 
-    def get_decks(self) -> list:
+    async def get_decks(self) -> list:
         """Retourne la liste de tous les decks."""
         try:
             return self._models.get_decks()
         except Exception as e:
             logger.error("get_decks: %s", e)
-            return {"error": str(e)}
+            return []
 
-    def create_deck(self, name: str, energy_type: str = None) -> dict:
+    async def create_deck(self, name: str, energy_type: str = None) -> dict:
         """Crée un deck. Retourne {"error": ...} si le nom est vide."""
         if not name or not name.strip():
             return {"error": "Le nom du deck ne peut pas être vide"}
@@ -59,43 +59,43 @@ class TrackerAPI:
             logger.error("create_deck: %s", e)
             return {"error": str(e)}
 
-    def update_deck(self, deck_id: int, name: str, energy_type: str = None) -> bool:
+    async def update_deck(self, deck_id: int, name: str, energy_type: str = None) -> bool:
         """Met à jour le nom et l'énergie d'un deck. Retourne True si succès."""
         try:
             return self._models.update_deck(deck_id, name.strip(), energy_type or None)
         except Exception as e:
             logger.error("update_deck: %s", e)
-            return {"error": str(e)}
+            return False
 
-    def delete_deck(self, deck_id: int) -> bool:
+    async def delete_deck(self, deck_id: int) -> bool:
         """Supprime un deck. Retourne True si succès, False si inexistant."""
         try:
             return self._models.delete_deck(deck_id)
         except Exception as e:
             logger.error("delete_deck: %s", e)
-            return {"error": str(e)}
+            return False
 
     # -------------------------------------------------------------------------
     # Config (Story 2.2)
     # -------------------------------------------------------------------------
 
-    def get_config(self) -> dict:
+    async def get_config(self) -> dict:
         """Retourne la configuration complète (config.json + defaults)."""
         try:
             return self._config.get_all()
         except Exception as e:
             logger.error("get_config: %s", e)
-            return {"error": str(e)}
+            return dict(CONFIG_DEFAULTS)
 
-    def save_config(self, config: dict) -> bool:
+    async def save_config(self, config: dict) -> bool:
         """Sauvegarde la configuration dans config.json."""
         try:
             return self._config.save(config)
         except Exception as e:
             logger.error("save_config: %s", e)
-            return {"error": str(e)}
+            return False
 
-    def auto_detect_region(self) -> dict:
+    async def auto_detect_region(self) -> dict:
         """Détecte automatiquement la zone client MuMu et affiche un cadre rouge de confirmation.
 
         Utilise win32gui pour lire le rect client exact (sans barre de titre Windows).
@@ -115,7 +115,7 @@ class TrackerAPI:
             logger.error("auto_detect_region: %s", e)
             return {"error": str(e)}
 
-    def list_windows(self) -> list:
+    async def list_windows(self) -> list:
         """Retourne toutes les fenêtres visibles pour sélection manuelle de la région."""
         try:
             return list_all_windows()
@@ -123,7 +123,7 @@ class TrackerAPI:
             logger.error("list_windows: %s", e)
             return {"error": str(e)}
 
-    def select_window_as_region(self, hwnd: int) -> dict:
+    async def select_window_as_region(self, hwnd: int) -> dict:
         """Sélectionne une fenêtre par son hwnd comme région de capture et affiche le cadre rouge."""
         try:
             import win32gui  # noqa: PLC0415
@@ -142,10 +142,10 @@ class TrackerAPI:
             logger.error("select_window_as_region: %s", e)
             return {"error": str(e)}
 
-    def start_region_selection(self) -> dict:
+    async def start_region_selection(self) -> dict:
         """Lance le sélecteur de région tkinter (overlay fullscreen).
 
-        Méthode synchrone — bloque jusqu'à sélection ou annulation (max 120s).
+        Bloque jusqu'à sélection ou annulation (max 120s).
         tkinter tourne dans un thread séparé pour ne pas conflictuer avec pywebview.
         Sauvegarde la région dans config.json si sélection valide.
         Windows-only — mockable en tests.
@@ -168,7 +168,7 @@ class TrackerAPI:
     # Stats (Epic 4 — Story 4.1)
     # -------------------------------------------------------------------------
 
-    def get_stats(self, season: str = None, match_type: str = None) -> dict:
+    async def get_stats(self, season: str = None, match_type: str = None) -> dict:
         """Retourne les statistiques agrégées (winrate global + par deck)."""
         try:
             return self._models.get_stats(season=season, match_type=match_type or None)
@@ -176,29 +176,29 @@ class TrackerAPI:
             logger.error("get_stats: %s", e)
             return {"error": str(e)}
 
-    def update_match_field(self, match_id: int, field: str, value: str) -> bool:
+    async def update_match_field(self, match_id: int, field: str, value: str) -> bool:
         """Modifie un champ d'un match existant. Protégé par _db_lock."""
         try:
             with self._db_lock:
                 return self._models.update_match_field(match_id, field, value)
         except Exception as e:
             logger.error("update_match_field: %s", e)
-            return {"error": str(e)}
+            return False
 
     # -------------------------------------------------------------------------
     # Matches (Story 3.4)
     # -------------------------------------------------------------------------
 
-    def delete_match(self, match_id: int) -> bool:
-        """Supprime un match. Retourne True si succès, False si inexistant."""
+    async def delete_match(self, match_id: int) -> bool:
+        """Supprime un match. Retourne True si succès, False si inexistant ou erreur."""
         try:
             with self._db_lock:
                 return self._models.delete_match(match_id)
         except Exception as e:
             logger.error("delete_match: %s", e)
-            return {"error": str(e)}
+            return False
 
-    def save_match(self, match_data: dict) -> dict:
+    async def save_match(self, match_data: dict) -> dict:
         """Enregistre un match capturé en DB. Protégé par _db_lock."""
         try:
             with self._db_lock:
@@ -207,7 +207,7 @@ class TrackerAPI:
             logger.error("save_match: %s", e)
             return {"error": str(e)}
 
-    def get_seasons(self) -> list:
+    async def get_seasons(self) -> list:
         """Retourne les saisons distinctes (non nulles) présentes dans la DB."""
         try:
             return self._models.get_seasons()
@@ -215,8 +215,8 @@ class TrackerAPI:
             logger.error("get_seasons: %s", e)
             return {"error": str(e)}
 
-    def get_matches(self, season: str = None, match_type: str = None,
-                    deck_id: int = None) -> list:
+    async def get_matches(self, season: str = None, match_type: str = None,
+                          deck_id: int = None) -> list | dict:
         """Retourne l'historique des matchs."""
         try:
             return self._models.get_matches(
@@ -234,18 +234,22 @@ class TrackerAPI:
         """Injecte la référence au PollingLoop depuis main.py (Story 3.1)."""
         self._polling = polling
 
-    def capture_test_frame(self) -> dict:
+    async def capture_test_frame(self) -> dict:
         """Capture un frame de la région configurée pour test visuel."""
-        config = self._config.get_all()
-        region = config.get("mumu_region")
-        if not region:
-            return {"error": "Aucune région configurée. Configurez d'abord la région MUMU."}
-        frame = capture_region(region)
-        if frame is None:
-            return {"error": "Capture de la région échouée."}
-        return frame
+        try:
+            config = self._config.get_all()
+            region = config.get("mumu_region")
+            if not region:
+                return {"error": "Aucune région configurée. Configurez d'abord la région MUMU."}
+            frame = capture_region(region)
+            if frame is None:
+                return {"error": "Capture de la région échouée."}
+            return frame
+        except Exception as e:
+            logger.error("capture_test_frame: %s", e)
+            return {"error": str(e)}
 
-    def get_capture_status(self) -> dict:
+    async def get_capture_status(self) -> dict:
         """Retourne l'état courant du pipeline de capture."""
         config = self._config.get_all()
         region = config.get("mumu_region")
@@ -275,15 +279,39 @@ class TrackerAPI:
     # Statut du modèle ML
     # -------------------------------------------------------------------------
 
-    def get_calibration_status(self) -> dict:
-        """Retourne le statut du modèle ML de détection d'état."""
+    async def get_calibration_status(self) -> dict:
+        """Retourne le statut de calibration par état (pre_queue, in_combat, end_screen)."""
         try:
             if self._polling is None or self._polling._detector is None:
-                return {"model_available": False}
+                return {"pre_queue": False, "in_combat": False, "end_screen": False}
             d = self._polling._detector
-            return {"model_available": d.is_model_available()}
+            return {
+                "pre_queue":  bool(d.is_calibrated("pre_queue")),
+                "in_combat":  bool(d.is_calibrated("in_combat")),
+                "end_screen": bool(d.is_calibrated("end_screen")),
+            }
         except Exception as e:
             logger.error("get_calibration_status: %s", e)
+            return {"pre_queue": False, "in_combat": False, "end_screen": False}
+
+    async def calibrate_state(self, state: str) -> dict:
+        """Capture l'écran actuel et calibre le détecteur pour l'état donné."""
+        try:
+            config = self._config.get_all()
+            region = config.get("mumu_region")
+            if not region:
+                return {"error": "Aucune région configurée."}
+            if self._polling is None or self._polling._detector is None:
+                return {"error": "Polling non démarré."}
+            img = capture_region_pil(region)
+            if img is None:
+                return {"error": "Capture échouée."}
+            ok = self._polling._detector.calibrate(state, img)
+            if not ok:
+                return {"error": f"Calibration échouée pour l'état : {state}"}
+            return {"ok": True, "state": state}
+        except Exception as e:
+            logger.error("calibrate_state: %s", e)
             return {"error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -605,7 +633,7 @@ class TrackerAPI:
             logger.error("open_external_url: %s", e)
             return {"error": str(e)}
 
-    def export_matches_csv(self) -> dict:
+    async def export_matches_csv(self) -> dict:
         """Exporte tous les matchs en CSV dans data/matches_export.csv et l'ouvre."""
         import csv
         import os as _os

@@ -1,12 +1,7 @@
-// ui/components/chart-winrate.js — Bar chart winrate par deck avec icônes énergie
+// ui/components/chart-winrate.js — Bar chart winrate par deck (Story 4.3)
 var chartWinrate = {
-    _ICON_MAP: {
-        'Feu':'vendor/energy/fire.png','Eau':'vendor/energy/water.png',
-        'Plante':'vendor/energy/grass.png','Électrique':'vendor/energy/lightning.png',
-        'Psy':'vendor/energy/psychic.png','Combat':'vendor/energy/fighting.png',
-        'Obscurité':'vendor/energy/darkness.png','Acier':'vendor/energy/metal.png',
-        'Incolore':'vendor/energy/colorless.png','Dragon':'vendor/energy/dragon.png',
-    },
+    _chart:  null,
+    _active: [],
 
     init: function () {
         window.addEventListener('stats-loaded', function (e) {
@@ -15,6 +10,9 @@ var chartWinrate = {
         window.addEventListener('stats-error', function () {
             chartWinrate._showEmpty('Erreur de chargement');
         });
+        // Pas de listeners match-created/updated ici :
+        // app.js et stats-bar.js dispatchent déjà stats-load-requested → stats-loaded
+        // chart-winrate.js reçoit automatiquement stats-loaded sans doublon.
 
         var row = document.querySelector('.charts-row');
         if (row) {
@@ -27,6 +25,7 @@ var chartWinrate = {
 
     render: function (stats) {
         var deckStats = (stats && stats.deck_stats) ? stats.deck_stats : [];
+        // Filtrer les decks sans match connu (wins + losses = 0)
         var active = deckStats.filter(function (d) { return (d.wins + d.losses) > 0; });
 
         if (active.length === 0) {
@@ -34,38 +33,93 @@ var chartWinrate = {
             return;
         }
 
-        var style     = getComputedStyle(document.documentElement);
-        var colorWin  = style.getPropertyValue('--color-win').trim()  || '#22c55e';
-        var colorLoss = style.getPropertyValue('--color-loss').trim() || '#ef4444';
+        // Tri par winrate décroissant (AC1)
+        active = active.slice().sort(function (a, b) { return b.winrate - a.winrate; });
+        chartWinrate._active = active;
 
-        var html = '<h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Winrate par deck</h3>';
-        active.forEach(function (d) {
-            var iconSrc = chartWinrate._ICON_MAP[d.energy_type];
-            var iconHtml = iconSrc
-                ? '<img src="' + iconSrc + '" alt="' + (d.energy_type || '') + '" style="width:14px;height:14px;object-fit:contain;flex-shrink:0;">'
-                : '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#888;flex-shrink:0;"></span>';
-            var wr = d.winrate.toFixed(1) + '%';
-            var winPct  = d.winrate.toFixed(1);
-            var lossPct = (100 - d.winrate).toFixed(1);
-            html +=
-                '<div class="flex items-center gap-2 mb-1">' +
-                '<div class="flex items-center gap-1 shrink-0" style="width:140px;overflow:hidden;">' +
-                iconHtml +
-                '<span class="text-xs truncate">' + d.deck_name.replace(/</g, '&lt;') + '</span>' +
-                '</div>' +
-                '<div class="flex flex-1 h-4 rounded overflow-hidden gap-px">' +
-                (d.wins  > 0 ? '<div style="width:' + winPct  + '%;background:' + colorWin  + ';min-width:2px;" title="' + d.wins  + ' victoires"></div>' : '') +
-                (d.losses > 0 ? '<div style="width:' + lossPct + '%;background:' + colorLoss + ';min-width:2px;" title="' + d.losses + ' défaites"></div>' : '') +
-                '</div>' +
-                '<span class="text-xs opacity-60 shrink-0 w-20 text-right">' + d.wins + 'V ' + d.losses + 'D · ' + wr + '</span>' +
-                '</div>';
+        var style     = getComputedStyle(document.documentElement);
+        var colorWin  = style.getPropertyValue('--color-win').trim();
+        var colorLoss = style.getPropertyValue('--color-loss').trim();
+
+        // Labels : astérisque pour faible échantillon < 3 matchs (AC4)
+        var labels = active.map(function (d) {
+            return d.deck_name + ((d.wins + d.losses) < 3 ? ' *' : '');
+        });
+        var values = active.map(function (d) { return d.winrate; });
+        var colors = active.map(function (d) {
+            return d.winrate >= 50 ? colorWin : colorLoss;
         });
 
         var wrapper = document.getElementById('chart-winrate-wrapper');
-        if (wrapper) wrapper.innerHTML = html;
+        if (!wrapper) return;
+
+        wrapper.innerHTML =
+            '<h3 class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">Winrate par deck</h3>' +
+            '<canvas id="chart-winrate-canvas" aria-label="Graphique winrate par deck" role="img"></canvas>';
+
+        if (chartWinrate._chart) {
+            chartWinrate._chart.destroy();
+            chartWinrate._chart = null;
+        }
+
+        var ctx = document.getElementById('chart-winrate-canvas');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        // Capturer active en closure pour le tooltip (M1 fix)
+        var capturedActive = active;
+
+        chartWinrate._chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data:            values,
+                    backgroundColor: colors,
+                    borderRadius:    4,
+                }]
+            },
+            options: {
+                indexAxis:  'y',
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                var d      = capturedActive[context.dataIndex];
+                                var sample = (d.wins + d.losses) < 3 ? ' ⚠ faible échantillon' : '';
+                                return d.wins + 'V / ' + d.losses + 'D · ' + d.winrate.toFixed(1) + '%' + sample;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        min: 0,
+                        max: 100,
+                        ticks: {
+                            callback: function (v) { return v + '%'; }
+                        }
+                    }
+                },
+                onClick: function (evt, elements) {
+                    if (elements.length === 0) return;
+                    var idx = elements[0].index;
+                    var d   = chartWinrate._active[idx];
+                    if (d && typeof detailPanel !== 'undefined') {
+                        detailPanel._openDeckDetail(d.deck_id);
+                    }
+                }
+            }
+        });
     },
 
     _showEmpty: function (msg) {
+        chartWinrate._active = [];  // M2 fix : effacer le ghost state
+        if (chartWinrate._chart) {
+            chartWinrate._chart.destroy();
+            chartWinrate._chart = null;
+        }
         var wrapper = document.getElementById('chart-winrate-wrapper');
         if (!wrapper) return;
         wrapper.innerHTML =

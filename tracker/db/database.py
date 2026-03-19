@@ -203,24 +203,39 @@ _MIGRATIONS = {
 
 _CREATE_DECKS = """
 CREATE TABLE IF NOT EXISTS decks (
-    id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    name    TEXT NOT NULL,
-    created TEXT NOT NULL
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    created     TEXT NOT NULL,
+    energy_type TEXT
 );
 """
 
+# IMPORTANT: Ce schéma doit rester synchronisé avec _MIGRATIONS.
+# Toute nouvelle colonne ajoutée via ALTER TABLE dans _MIGRATIONS doit
+# également être ajoutée ici pour que les DB de test (fresh) soient correctes.
 _CREATE_MATCHES = """
 CREATE TABLE IF NOT EXISTS matches (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    deck_id      INTEGER REFERENCES decks(id),
-    result       TEXT,
-    opponent     TEXT,
-    first_player TEXT,
-    season       TEXT,
-    captured_at  TEXT NOT NULL,
-    raw_ocr_data TEXT,
-    notes        TEXT,
-    tags         TEXT
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    deck_id              INTEGER REFERENCES decks(id),
+    result               TEXT,
+    opponent             TEXT,
+    first_player         TEXT,
+    season               TEXT,
+    captured_at          TEXT NOT NULL,
+    raw_ocr_data         TEXT,
+    notes                TEXT,
+    tags                 TEXT,
+    turns_played         INTEGER,
+    player_points        INTEGER,
+    opponent_points      INTEGER,
+    damage_dealt         INTEGER,
+    match_type           TEXT,
+    energy_type          TEXT,
+    conceded_by          TEXT,
+    rank_name            TEXT,
+    rank_points          INTEGER,
+    opponent_energy_type TEXT,
+    opponent_deck        TEXT
 );
 """
 

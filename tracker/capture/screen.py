@@ -396,23 +396,15 @@ def capture_region(region: dict) -> dict | None:
     """
     import base64  # noqa: PLC0415
     import io  # noqa: PLC0415
-    import mss  # noqa: PLC0415
-    from PIL import Image  # noqa: PLC0415
 
     try:
-        monitor = {
-            "left": region["x"],
-            "top": region["y"],
-            "width": region["width"],
-            "height": region["height"],
-        }
-        with mss.mss() as sct:
-            screenshot = sct.grab(monitor)
-            img = Image.frombytes("RGB", screenshot.size, screenshot.bgra, "raw", "BGRX")
+        img = capture_region_pil(region)
+        if img is None:
+            return None
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
         b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-        return {"image_b64": b64, "width": region["width"], "height": region["height"]}
+        return {"image_b64": b64, "width": img.width, "height": img.height}
     except Exception as e:
         logger.error("capture_region: %s", e)
         return None

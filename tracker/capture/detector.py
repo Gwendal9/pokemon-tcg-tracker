@@ -309,6 +309,10 @@ class PollingLoop:
             elif not self._mumu_detected and prev:
                 logger.info("MUMU Player perdu")
                 self._state = CombatState.IDLE
+                self._prequeue_exit_ticks = 0
+                self._prequeue_combat_ticks = 0
+                self._combat_prequeue_ticks = 0
+                self._end_screen_exit_ticks = 0
                 on_lost = self._on_mumu_lost
 
         if on_detected:
